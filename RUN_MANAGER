@@ -1,42 +1,40 @@
 #!/usr/bin/env bash
-# Run this on the Cloudera Manager server node.
-# Edit EXPORTS first, especially credentials, MANAGER_HOST, ALLOWED_CIDR, passwords, and FIPS_JAR_SOURCE_DIR.
-
+# Run on the Cloudera Manager server node after editing EXPORTS.
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./EXPORTS
 
 run_step() {
-  local desc="$1"
+  local description="$1"
   shift
   echo
   echo "========================================================================"
-  echo "Running: ${desc}"
+  echo "Running: ${description}"
   echo "Command: $*"
   echo "========================================================================"
   "$@"
 }
 
-run_step "preflight connectivity" sudo -E bash 00_check_connectivity.sh
-run_step "bootstrap OS repositories" sudo -E bash 01_bootstrap_repos.sh
-run_step "install common packages" sudo -E bash 02_install_common_packages.sh
-run_step "configure operating system" sudo -E bash 03_configure_os.sh
-run_step "install/validate Java 11" sudo -E bash 04_install_java11_fips_runtime.sh
-run_step "install and initialize PostgreSQL" sudo -E bash 05_install_postgres.sh
-run_step "configure PostgreSQL networking" sudo -E bash 06_configure_postgres_networking.sh
-run_step "create CM and NiFi Registry databases" sudo -E bash 07_create_cm_and_registry_dbs.sh
-run_step "add Cloudera Manager repos" sudo -E bash 08_add_cloudera_repos.sh
-run_step "install Cloudera Manager packages" sudo -E bash 09_install_cm_packages.sh manager
-run_step "configure local Cloudera Manager agent" sudo -E bash 10_configure_cm_agent.sh "${MANAGER_HOST:-$(hostname -f)}"
-run_step "prepare Cloudera Manager database" sudo -E bash 11_prepare_cm_database.sh
-run_step "start Cloudera Manager services" sudo -E bash 12_start_cm_services.sh
-run_step "install CFM CSDs" sudo -E bash 13_install_cfm_csds.sh
-run_step "validate ready state" sudo -E bash 15_validate_ready_state.sh
+run_step 'preflight connectivity' sudo -E bash 00_check_connectivity.sh
+run_step 'bootstrap OS repositories' sudo -E bash 01_bootstrap_repos.sh
+run_step 'install common packages' sudo -E bash 02_install_common_packages.sh
+run_step 'configure operating system' sudo -E bash 03_configure_os.sh
+run_step "install/validate Java ${JAVA_MAJOR} and FIPS providers" sudo -E bash 04_install_java11_fips_runtime.sh
+run_step "install and initialize PostgreSQL ${PG_MAJOR}" sudo -E bash 05_install_postgres.sh
+run_step 'configure PostgreSQL networking' sudo -E bash 06_configure_postgres_networking.sh
+run_step 'create Cloudera service databases' sudo -E bash 07_create_cm_and_registry_dbs.sh
+run_step "add Cloudera Manager ${CM_VERSION} repository" sudo -E bash 08_add_cloudera_repos.sh
+run_step 'install Cloudera Manager server and agent packages' sudo -E bash 09_install_cm_packages.sh manager
+run_step 'configure local Cloudera Manager agent' sudo -E bash 10_configure_cm_agent.sh "${MANAGER_HOST:-$(hostname -f)}"
+run_step 'prepare Cloudera Manager database' sudo -E bash 11_prepare_cm_database.sh
+run_step 'start Cloudera Manager services' sudo -E bash 12_start_cm_services.sh
+run_step "install CFM ${CFM_VERSION} CSDs" sudo -E bash 13_install_cfm_csds.sh
+run_step 'validate manager ready state' sudo -E bash 15_validate_ready_state.sh
 
 echo
-echo "[OK] RUN_MANAGER complete."
-echo "Do not run 14_install_cfm_fips_jars.sh until after the CFM parcel is downloaded, distributed, and activated in Cloudera Manager."
-echo "After CFM parcel activation, run:"
-echo "  source ./EXPORTS"
-echo "  sudo -E bash 14_install_cfm_fips_jars.sh"
-echo "  sudo -E bash 15_validate_ready_state.sh"
+echo '[OK] RUN_MANAGER complete.'
+echo "Do not run 14_install_cfm_fips_jars.sh until parcel ${CFM_PARCEL_DIR_NAME} is activated."
+echo 'After activation, run:'
+echo '  source ./EXPORTS'
+echo '  sudo -E bash 14_install_cfm_fips_jars.sh'
+echo '  sudo -E bash 15_validate_ready_state.sh'

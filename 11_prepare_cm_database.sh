@@ -7,43 +7,31 @@ validate_platform
 ensure_java_default
 validate_java_11
 
-PREP_SCRIPT="/opt/cloudera/cm/schema/scm_prepare_database.sh"
-if [[ ! -x "$PREP_SCRIPT" ]]; then
-  echo "[ERROR] Missing $PREP_SCRIPT. Install cloudera-manager-server first."
-  exit 1
-fi
-
-SERVICE="$(pg_service_name)"
-if ! systemctl is-active --quiet "$SERVICE"; then
-  echo "[ERROR] ${SERVICE} is not running. Start PostgreSQL before preparing the CM database."
-  exit 1
-fi
+[[ -x "${CM_PREP_DATABASE_SCRIPT}" ]] || { echo "[ERROR] Missing ${CM_PREP_DATABASE_SCRIPT}. Install the CM server package first."; exit 1; }
+systemctl is-active --quiet "${PG_SERVICE_NAME}" || { echo "[ERROR] ${PG_SERVICE_NAME} is not running."; exit 1; }
 
 if command -v nc >/dev/null 2>&1; then
-  nc -zv localhost "${POSTGRES_PORT:-5432}"
+  nc -zv "${DB_HOST}" "${DB_PORT}"
 fi
 
-# Ensure PostgreSQL JDBC driver is available where CM expects it.
-JDBC_DIR="/usr/share/java"
-mkdir -p "$JDBC_DIR"
-if ! ls "$JDBC_DIR"/postgresql*.jar >/dev/null 2>&1; then
-  echo "==== Installing PostgreSQL JDBC driver package if available ===="
-  dnf install -y postgresql-jdbc
-  # postgresql-jdbc may pull Java 8 on RHEL 8. Force Java 11 back as the default.
+mkdir -p "${POSTGRES_JDBC_DIR}"
+if ! compgen -G "${POSTGRES_JDBC_DIR}/${POSTGRES_JDBC_GLOB}" >/dev/null; then
+  echo "==== Installing PostgreSQL JDBC driver ===="
+  dnf install -y "${POSTGRES_JDBC_PACKAGE}"
+  # The JDBC package can change the active Java alternative; restore Java ${JAVA_MAJOR}.
   ensure_java_default
   validate_java_11
 fi
-
-if ! ls "$JDBC_DIR"/postgresql*.jar >/dev/null 2>&1; then
-  echo "[ERROR] PostgreSQL JDBC jar not found in /usr/share/java. Install postgresql-jdbc or place the driver jar there."
+if ! compgen -G "${POSTGRES_JDBC_DIR}/${POSTGRES_JDBC_GLOB}" >/dev/null; then
+  echo "[ERROR] PostgreSQL JDBC jar not found in ${POSTGRES_JDBC_DIR}."
   exit 1
 fi
 
-# One more Java check immediately before scm_prepare_database.sh.
 ensure_java_default
 validate_java_11
+read -r -a extra_args <<< "${CM_DB_PREP_EXTRA_ARGS}"
 
 echo "==== Running scm_prepare_database.sh ===="
-"$PREP_SCRIPT" postgresql "${CM_DB_NAME}" "${CM_DB_USER}" "${CM_DB_PASS}"
+"${CM_PREP_DATABASE_SCRIPT}" "${CM_DB_TYPE}" "${extra_args[@]}" "${CM_DB_NAME}" "${CM_DB_USER}" "${CM_DB_PASS}"
 
 echo "[OK] Cloudera Manager database prepared"

@@ -5,39 +5,34 @@ log_init "02_install_common_packages"
 need_root
 validate_platform
 
-COMMON_PACKAGES=(
-  wget curl vim tar unzip bind-utils net-tools lsof which rsync jq
-  chrony rng-tools nmap-ncat tcpdump telnet perl perl-IPC-Run iproute rpcbind
-  python3 python3-pip python3-devel python38 python38-devel python38-pip gcc gcc-c++ make openssl-devel libffi-devel
-  redhat-lsb-core policycoreutils-python-utils
-)
-
+read -r -a packages <<< "${COMMON_PACKAGES}"
 FAILED=()
-for pkg in "${COMMON_PACKAGES[@]}"; do
-  echo "---- Installing $pkg"
-  if ! dnf install -y "$pkg"; then
-    echo "[WARN] Failed to install $pkg"
-    FAILED+=("$pkg")
+for package_name in "${packages[@]}"; do
+  echo "---- Installing ${package_name}"
+  if ! dnf install -y "${package_name}"; then
+    echo "[WARN] Failed to install ${package_name}"
+    FAILED+=("${package_name}")
   fi
 done
 
-systemctl enable chronyd || true
-systemctl restart chronyd || true
-systemctl enable rngd || true
-systemctl restart rngd || true
+for service_name in "${CHRONY_SERVICE}" "${RNG_SERVICE}"; do
+  if service_exists "${service_name}"; then
+    systemctl enable "${service_name}" || true
+    systemctl restart "${service_name}" || true
+  fi
+done
 
 echo
-echo "System Python: $(python3 --version 2>/dev/null || echo missing)"
-echo "CM Agent Python: $(/usr/bin/python3.8 --version 2>/dev/null || echo missing)"
+echo "System Python: $(${SYSTEM_PYTHON_BIN} --version 2>/dev/null || echo missing)"
+echo "CM Agent Python: $(${CM_AGENT_PYTHON_BIN} --version 2>/dev/null || echo missing)"
 install_required_agent_python
 install_hue_fips_psycopg2
-which nc || true
-which jq || true
+command -v nc || true
+command -v jq || true
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
   echo "[ERROR] Failed packages: ${FAILED[*]}"
-  echo "Fix the failed packages before continuing."
   exit 1
-else
-  echo "[OK] Common packages installed"
 fi
+
+echo "[OK] Common packages installed"

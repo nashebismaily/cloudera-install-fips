@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"
-log_init "04_install_java11_fips_runtime"
+log_init "04_install_java_fips_runtime"
 need_root
 validate_platform
 
-case "${JAVA_INSTALL_MODE:-system}" in
+case "${JAVA_INSTALL_MODE}" in
   system)
-    echo "==== Installing system OpenJDK ${JAVA_MAJOR:-11} ===="
-    dnf install -y "java-${JAVA_MAJOR:-11}-openjdk" "java-${JAVA_MAJOR:-11}-openjdk-devel"
+    echo "==== Installing system OpenJDK ${JAVA_MAJOR} ===="
+    read -r -a packages <<< "${JAVA_SYSTEM_PACKAGES}"
+    dnf install -y "${packages[@]}"
     ;;
   custom)
-    echo "==== Using custom Java ===="
-    if [[ -z "${CUSTOM_JAVA_HOME:-}" ]]; then
-      echo "[ERROR] JAVA_INSTALL_MODE=custom requires CUSTOM_JAVA_HOME"
-      exit 1
-    fi
+    echo "==== Using custom Java: ${CUSTOM_JAVA_HOME} ===="
+    [[ -n "${CUSTOM_JAVA_HOME}" ]] || { echo "[ERROR] JAVA_INSTALL_MODE=custom requires CUSTOM_JAVA_HOME"; exit 1; }
     ;;
   skip)
     echo "[INFO] JAVA_INSTALL_MODE=skip; not installing or validating Java"
@@ -31,4 +29,4 @@ ensure_java_default
 validate_java_11
 configure_java_fips_safelogic
 
-echo "[OK] Java runtime ready. JAVA_HOME=${JAVA_HOME:-$(java_home_target)}"
+echo "[OK] Java runtime ready. JAVA_HOME=${JAVA_HOME}"

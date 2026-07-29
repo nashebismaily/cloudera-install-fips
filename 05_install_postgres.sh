@@ -5,71 +5,61 @@ log_init "05_install_postgres"
 need_root
 validate_platform
 
-PG_MAJOR="${PG_MAJOR:-14}"
-PGDATA_DIR="${PGDATA_DIR:-/data/postgres${PG_MAJOR}}"
-SERVICE="$(pg_service_name)"
-PG_BIN_DIR="$(pg_bin_dir)"
-
-if [[ "$PG_MAJOR" != "14" ]]; then
-  echo "[WARN] Default validated target for CDP 7.1.9/7.3.1 FIPS install kit is PG 14. Current PG_MAJOR=$PG_MAJOR. Confirm support matrix before proceeding."
+if [[ "${PG_MAJOR}" != "${VALIDATED_PG_MAJOR}" ]]; then
+  echo "[WARN] This install profile was validated with PostgreSQL ${VALIDATED_PG_MAJOR}; current PG_MAJOR=${PG_MAJOR}. Confirm the support matrix for CDP Runtime ${CDP_RUNTIME_VERSION}."
 fi
 
 echo "==== Installing PostgreSQL ${PG_MAJOR} ===="
-dnf install -y "postgresql${PG_MAJOR}" "postgresql${PG_MAJOR}-server" "postgresql${PG_MAJOR}-contrib" "postgresql${PG_MAJOR}-devel"
+read -r -a packages <<< "${PG_PACKAGES}"
+dnf install -y "${packages[@]}"
 
-if ! id postgres >/dev/null 2>&1; then
-  echo "[ERROR] postgres OS user was not created by the PostgreSQL packages."
+if ! id "${PG_OS_USER}" >/dev/null 2>&1; then
+  echo "[ERROR] PostgreSQL OS user was not created: ${PG_OS_USER}"
   exit 1
 fi
 
-mkdir -p "$PGDATA_DIR"
-chown -R postgres:postgres "$PGDATA_DIR"
-chmod 700 "$PGDATA_DIR"
+# Live-install fix: the custom data directory parent must be traversable.
+PGDATA_PARENT="$(dirname "${PGDATA_DIR}")"
+mkdir -p "${PGDATA_PARENT}" "${PGDATA_DIR}"
+chmod "${PGDATA_PARENT_MODE}" "${PGDATA_PARENT}"
+chown -R "${PGDATA_OWNER}" "${PGDATA_DIR}"
+chmod "${PGDATA_DIR_MODE}" "${PGDATA_DIR}"
+restorecon -Rv "${PGDATA_PARENT}" "${PGDATA_DIR}" 2>/dev/null || true
 
-# The PGDG systemd unit defaults to /var/lib/pgsql/<major>/data. The install kit
-# uses PGDATA_DIR from EXPORTS, so create a systemd drop-in instead of hardcoding.
-OVERRIDE_DIR="/etc/systemd/system/${SERVICE}.service.d"
-mkdir -p "$OVERRIDE_DIR"
-cat >"${OVERRIDE_DIR}/override.conf" <<EOFPGDATA
+mkdir -p "${PG_SYSTEMD_OVERRIDE_DIR}"
+cat >"${PG_SYSTEMD_OVERRIDE_FILE}" <<EOFPGDATA
 [Service]
 Environment=PGDATA=${PGDATA_DIR}
 EOFPGDATA
 
-# Keep the legacy sysconfig file in sync as well. Some PGDG/RHEL packaging paths
-# still read it or make troubleshooting easier.
-SYSCONFIG="/etc/sysconfig/pgsql/postgresql-${PG_MAJOR}"
-mkdir -p /etc/sysconfig/pgsql
-cat >"$SYSCONFIG" <<EOFPG
+mkdir -p "${PG_SYSCONFIG_DIR}"
+cat >"${PG_SYSCONFIG_FILE}" <<EOFPG
 PGDATA=${PGDATA_DIR}
 EOFPG
 
-# Label custom PGDATA for SELinux when available. If semanage is not present yet,
-# the script continues, but policycoreutils-python-utils should normally install it.
 if command -v semanage >/dev/null 2>&1; then
   semanage fcontext -a -t postgresql_db_t "${PGDATA_DIR}(/.*)?" 2>/dev/null || \
     semanage fcontext -m -t postgresql_db_t "${PGDATA_DIR}(/.*)?" || true
-  restorecon -Rv "$PGDATA_DIR" || true
+  restorecon -Rv "${PGDATA_PARENT}" "${PGDATA_DIR}" || true
 else
-  echo "[WARN] semanage not found; skipping SELinux fcontext for ${PGDATA_DIR}"
+  echo "[WARN] semanage not found; skipping SELinux fcontext configuration for ${PGDATA_DIR}"
 fi
 
-if [[ ! -f "$PGDATA_DIR/PG_VERSION" ]]; then
+if [[ ! -f "${PGDATA_DIR}/PG_VERSION" ]]; then
   echo "==== Initializing database at ${PGDATA_DIR} ===="
-  sudo -u postgres "$PG_BIN_DIR/initdb" -D "$PGDATA_DIR"
+  runuser -u "${PG_OS_USER}" -- "${PG_BIN_DIR}/initdb" -D "${PGDATA_DIR}"
 else
   echo "[INFO] Existing PostgreSQL data directory detected at ${PGDATA_DIR}"
 fi
 
-chown -R postgres:postgres "$PGDATA_DIR"
-chmod 700 "$PGDATA_DIR"
-
+chown -R "${PGDATA_OWNER}" "${PGDATA_DIR}"
+chmod "${PGDATA_DIR_MODE}" "${PGDATA_DIR}"
 systemctl daemon-reload
-systemctl enable "$SERVICE"
-systemctl reset-failed "$SERVICE" || true
-systemctl restart "$SERVICE"
-
-sleep 3
-systemctl status "$SERVICE" --no-pager
-sudo -u postgres "$PG_BIN_DIR/psql" -c "SELECT version();"
+systemctl enable "${PG_SERVICE_NAME}"
+systemctl reset-failed "${PG_SERVICE_NAME}" || true
+systemctl restart "${PG_SERVICE_NAME}"
+sleep "${POSTGRES_SETTLE_SECONDS}"
+systemctl status "${PG_SERVICE_NAME}" --no-pager
+runuser -u "${PG_OS_USER}" -- "${PG_BIN_DIR}/psql" -c 'SELECT version();'
 
 echo "[OK] PostgreSQL ${PG_MAJOR} installed and running with PGDATA=${PGDATA_DIR}"

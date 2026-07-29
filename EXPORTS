@@ -2,151 +2,399 @@
 # ==============================================================================
 # Cloudera Manager + CDP Base + CFM FIPS install configuration
 # Target default: RHEL 8.10 FIPS, CM 7.13.1, CDP Runtime 7.3.1, CFM 2.1.7.3000
+#
+# This is the single source of configuration for the install scripts. Keep the
+# password defaults here, and change values here rather than editing the scripts.
 # ==============================================================================
 
 # ---- Cloudera archive credentials ----
-# These are required for protected Cloudera archive downloads.
+# Required for protected Cloudera archive downloads.
 export CLOUDERA_REPO_USER=''
 export CLOUDERA_REPO_PASS=''
 
+# ---- Password defaults / secrets ----
+# These working defaults are intentionally retained in EXPORTS.
+export CM_DB_PASS='ClouderaCM_2026'
+export RM_DB_PASS='Rman_DB_2026_FIPS'
+export REG_DB_PASS='Registry_DB_2026'
+export HUE_DB_PASS='Hue_DB_2026_FIPS'
+export HIVE_DB_PASS='Hive_DB_2026_FIPS'
+export RANGER_DB_PASS='Ranger_DB_2026'
+export NIFI_SENSITIVE_PROPS_KEY='ChangeMeToAtLeast12Chars'
+export CM_ADMIN_USER='admin'
+export CM_ADMIN_PASSWORD='admin'
+export AUTO_TLS_HOST_KEY_PASSWORD='ChangeMe12345'
+export AUTO_TLS_KEYSTORE_PASSWORD='ChangeMe12345'
+export AUTO_TLS_TRUSTSTORE_PASSWORD='ChangeMe12345'
+export AUTO_TLS_CA_KEY_PASSWORD='ChangeMe12345'
+
 # ---- Host roles / networking ----
-# Set MANAGER_HOST to the FQDN or private DNS name of the Cloudera Manager host.
-# On the manager itself, localhost is acceptable for database setup, but agents need the real manager hostname.
+# Use FQDNs or private DNS names that resolve between all cluster hosts.
 export MANAGER_HOST=''
 export AGENT_HOST=''
 export ALLOWED_CIDR='10.0.0.0/20'
+export DB_HOST='localhost'
+export DB_PORT='5432'
+export LOCALHOST_NAME='localhost'
+export CM_HTTP_SCHEME='http'
+export CM_HTTP_PORT='7180'
+export CM_HTTPS_SCHEME='https'
+export CM_HTTPS_PORT='7183'
+export CM_AGENT_PORT='7182'
+export AGENT_TCP_CHECK_PORT='22'
+export ZOOKEEPER_CLIENT_PORT='2181'
+export CHECK_ZOOKEEPER_PORT='false'
+export PREFLIGHT_PING_HOSTS='true'
+export CM_EXTERNAL_ACCESS_HOST=''
+
+# ---- Connectivity / retry behavior ----
+export CURL_INSECURE='false'
+export CURL_CONNECT_TIMEOUT_SECONDS='20'
+export CURL_HEAD_MAX_TIME_SECONDS='30'
+export CURL_DOWNLOAD_MAX_TIME_SECONDS='600'
+export CURL_PREFLIGHT_CONNECT_TIMEOUT_SECONDS='8'
+export CURL_PREFLIGHT_MAX_TIME_SECONDS='25'
+export TCP_CONNECT_TIMEOUT_SECONDS='5'
+export CM_WAIT_ATTEMPTS='90'
+export CM_WAIT_INTERVAL_SECONDS='5'
+export SERVICE_SETTLE_SECONDS='5'
+export CM_AGENT_JOURNAL_LINES='80'
+export CM_SERVER_JOURNAL_LINES='120'
+export POSTGRES_SETTLE_SECONDS='3'
 
 # ---- Platform guardrails ----
+export REDHAT_RELEASE_FILE='/etc/redhat-release'
+export OS_RELEASE_FILE='/etc/os-release'
+export FIPS_KERNEL_FLAG_FILE='/proc/sys/crypto/fips_enabled'
 export EXPECTED_RHEL_MAJOR='8'
 export EXPECTED_RHEL_MINOR='10'
 export REQUIRE_FIPS='true'
 export REQUIRE_X86_64='true'
+export REQUIRED_ARCH='x86_64'
+
+# ---- External repositories ----
+export ALLOW_EXTERNAL='true'
+export ENABLE_CODEREADY='true'
+export ENABLE_PGDG='true'
+export ENABLE_EPEL='false'
+export DISABLE_OS_POSTGRES_MODULE='true'
+export POSTGRES_OS_MODULE_NAME='postgresql'
+
+export REDHAT_CDN_URL='https://cdn.redhat.com'
+export PGDG_CONNECTIVITY_URL='https://download.postgresql.org/pub/repos/yum/'
+export CLOUDERA_CONNECTIVITY_URL='https://archive.cloudera.com/'
+export EPEL_CONNECTIVITY_URL='https://dl.fedoraproject.org/pub/epel/'
+export CODEREADY_REPO_ID="codeready-builder-for-rhel-${EXPECTED_RHEL_MAJOR}-rhui-rpms"
+export CODEREADY_REPO_PATTERN="codeready-builder-for-rhel-${EXPECTED_RHEL_MAJOR}-.*-rpms"
+export EPEL_RELEASE_RPM_URL="https://dl.fedoraproject.org/pub/epel/epel-release-latest-${EXPECTED_RHEL_MAJOR}.noarch.rpm"
+export PGDG_GPG_KEY_URL='https://download.postgresql.org/pub/repos/yum/keys/PGDG-RPM-GPG-KEY-RHEL'
+export PGDG_ARCH='x86_64'
+export PGDG_REPO_RPM_URL="https://download.postgresql.org/pub/repos/yum/reporpms/EL-${EXPECTED_RHEL_MAJOR}-${PGDG_ARCH}/pgdg-redhat-repo-latest.noarch.rpm"
+
+# ---- OS security behavior ----
+# SELINUX_MODE: unchanged | permissive | disabled
+export SELINUX_MODE='disabled'
+# Retained for backward compatibility. true forces SELINUX_MODE=disabled.
+export DISABLE_SELINUX='false'
+export DISABLE_FIREWALLD='false'
+export SELINUX_CONFIG_FILE='/etc/selinux/config'
+export FIREWALLD_SERVICE='firewalld'
+# FAPOLICYD_MODE: disable | warn | ignore
+# The live FIPS install required disable because fapolicyd blocked the SafeLogic jars.
+export FAPOLICYD_MODE='disable'
+export FAPOLICYD_SERVICE='fapolicyd'
+export FAPOLICYD_CLI='fapolicyd-cli'
+
+# ---- OS tuning ----
+export DISABLE_THP='true'
+export THP_SERVICE_NAME='disable-thp.service'
+export THP_SERVICE_FILE="/etc/systemd/system/${THP_SERVICE_NAME}"
+export BASH_BIN='/bin/bash'
+export THP_ENABLED_FILE='/sys/kernel/mm/transparent_hugepage/enabled'
+export THP_DEFRAG_FILE='/sys/kernel/mm/transparent_hugepage/defrag'
+export CLOUDERA_SYSCTL_FILE='/etc/sysctl.d/90-cloudera.conf'
+export CLOUDERA_SYSTEMD_LIMITS_DIR='/etc/systemd/system.conf.d'
+export CLOUDERA_SYSTEMD_LIMITS_FILE="${CLOUDERA_SYSTEMD_LIMITS_DIR}/99-cloudera-limits.conf"
+export CLOUDERA_SECURITY_LIMITS_DIR='/etc/security/limits.d'
+export CLOUDERA_SECURITY_LIMITS_FILE="${CLOUDERA_SECURITY_LIMITS_DIR}/99-cloudera.conf"
+export VM_SWAPPINESS='1'
+export FS_FILE_MAX='1000000'
+export VM_MAX_MAP_COUNT='262144'
+export NET_CORE_SOMAXCONN='65535'
+export DEFAULT_NOFILE_LIMIT='65536'
+export DEFAULT_NPROC_LIMIT='65536'
+export CLOUDERA_SERVICE_USER='cloudera-scm'
+export CLOUDERA_SERVICE_GROUP='cloudera-scm'
 
 # ---- Java ----
-# For this FIPS build, Java 11 is required.
-# JAVA_INSTALL_MODE values:
-#   system  = install java-11-openjdk/java-11-openjdk-devel from OS repos
-#   custom  = do not install Java; validate CUSTOM_JAVA_HOME
-#   skip    = do not install or validate Java
+# JAVA_INSTALL_MODE: system | custom | skip
 export JAVA_MAJOR='11'
 export JAVA_INSTALL_MODE='system'
 export CUSTOM_JAVA_HOME=''
-export JAVA_HOME_TARGET='/usr/lib/jvm/java-11-openjdk'
+# Stable, unversioned Java home required by Cloudera Manager.
+export JAVA_HOME_TARGET="/usr/lib/jvm/java-${JAVA_MAJOR}-openjdk"
+export JAVA_SYSTEM_PACKAGES="java-${JAVA_MAJOR}-openjdk java-${JAVA_MAJOR}-openjdk-devel"
+export JAVA_SEARCH_ROOT='/usr/lib/jvm'
+export JAVA_ALTERNATIVES_COMMAND='alternatives'
+export JAVA_ALTERNATIVE_LINK='/usr/bin/java'
+export JAVAC_ALTERNATIVE_LINK='/usr/bin/javac'
+export JAVA_ALTERNATIVE_PRIORITY='200000'
+export JAVA_PROFILE_FILE='/etc/profile.d/cloudera-java.sh'
+export JAVA_DEFAULT_FILE='/etc/default/cloudera-java'
+export JAVA_NORMALIZE_LEGACY_HOME='true'
+export JAVA_POLICY_RELATIVE_PATH='conf/security/java.policy'
+export JAVA_SECURITY_RELATIVE_PATH='conf/security/java.security'
 
 # ---- Cloudera Manager Agent Python ----
-# CM 7.13.x on RHEL 8 x86_64 requires a supported Python 3 runtime for the agent wrapper.
-# Do not rely on generic /usr/bin/python3 on RHEL 8; that is usually Python 3.6.
-# In testing, missing python3.8 caused /opt/cloudera/cm-agent/bin/python to exit 126.
+export SYSTEM_PYTHON_BIN='/usr/bin/python3'
+export CM_AGENT_PYTHON_MAJOR='3.8'
+export CM_AGENT_PYTHON_MODULE='python38'
 export CM_AGENT_PYTHON_BIN='/usr/bin/python3.8'
+export CM_AGENT_PYTHON_WRAPPER='/opt/cloudera/cm-agent/bin/python'
 export CM_AGENT_PYTHON_PACKAGES='python38 python38-devel python38-pip'
+export CM_AGENT_PYTHON_EXPECTED_VERSION="Python ${CM_AGENT_PYTHON_MAJOR}"
 export CM_AGENT_PYTHON_STRICT_VERSION='true'
 
+# ---- Common packages / services ----
+export COMMON_PACKAGES='wget curl vim tar unzip bind-utils net-tools lsof which rsync jq chrony rng-tools nmap-ncat tcpdump telnet perl perl-IPC-Run iproute rpcbind python3 python3-pip python3-devel gcc gcc-c++ make openssl-devel libffi-devel redhat-lsb-core policycoreutils-python-utils'
+export PREFLIGHT_COMMANDS='curl dnf rpm python3 java getenforce timedatectl chronyc host nslookup nc jq ping'
+export CHRONY_SERVICE='chronyd'
+export RNG_SERVICE='rngd'
+
 # ---- PostgreSQL ----
-# CDP 7.3.1 FIPS supports PostgreSQL 10 through 16.
-# PG 14 is intentionally kept as the default because it also works with the earlier 7.1.9 FIPS path
-# and keeps this install kit consistent across 7.1.9 -> 7.3.1 testing.
 export PG_MAJOR='14'
-export PGDATA_DIR='/data/postgres14'
-export DB_HOST='localhost'
-export DB_PORT='5432'
+export VALIDATED_PG_MAJOR='14'
+export PGDATA_DIR="/data/postgres${PG_MAJOR}"
+export PGDATA_PARENT_MODE='0755'
+export PGDATA_DIR_MODE='0700'
+export PGDATA_OWNER='postgres:postgres'
+export PG_OS_USER='postgres'
+export PG_OS_GROUP='postgres'
+export PG_SERVICE_NAME="postgresql-${PG_MAJOR}"
+export PG_BIN_DIR="/usr/pgsql-${PG_MAJOR}/bin"
+export PG_DEFAULT_DATA_DIR="/var/lib/pgsql/${PG_MAJOR}/data"
+export PG_PACKAGES="postgresql${PG_MAJOR} postgresql${PG_MAJOR}-server postgresql${PG_MAJOR}-contrib postgresql${PG_MAJOR}-devel"
+export PG_SYSTEMD_OVERRIDE_DIR="/etc/systemd/system/${PG_SERVICE_NAME}.service.d"
+export PG_SYSTEMD_OVERRIDE_FILE="${PG_SYSTEMD_OVERRIDE_DIR}/override.conf"
+export PG_SYSCONFIG_DIR='/etc/sysconfig/pgsql'
+export PG_SYSCONFIG_FILE="${PG_SYSCONFIG_DIR}/postgresql-${PG_MAJOR}"
+export POSTGRESQL_CONF_NAME='postgresql.conf'
+export PG_HBA_CONF_NAME='pg_hba.conf'
+export POSTGRES_LISTEN_ADDRESSES='*'
+export PG_HBA_AUTH_METHOD='scram-sha-256'
+export PG_HBA_LOOPBACK_IPV4='127.0.0.1/32'
+export PG_HBA_LOOPBACK_IPV6='::1/128'
+export PG_HBA_MANAGED_BEGIN='# BEGIN MANAGED BY cfm_fips_install'
+export PG_HBA_MANAGED_END='# END MANAGED BY cfm_fips_install'
+export POSTGRES_JDBC_PACKAGE='postgresql-jdbc'
+export POSTGRES_JDBC_DIR='/usr/share/java'
+export POSTGRES_JDBC_GLOB='postgresql*.jar'
 
 # ---- Databases ----
 export CM_DB_NAME='scm'
 export CM_DB_USER='scm'
-export CM_DB_PASS='ClouderaCM_2026'
-
 export RM_DB_NAME='rman'
 export RM_DB_USER='rman'
-export RM_DB_PASS='Rman_DB_2026'
-
 export REG_DB_NAME='nifireg'
 export REG_DB_USER='nifireg'
-export REG_DB_PASS='Registry_DB_2026'
-
-# Optional databases for common CDP Base services. Leave CREATE_EXTRA_DBS=false unless needed.
 export CREATE_EXTRA_DBS='false'
 export HUE_DB_NAME='hue'
 export HUE_DB_USER='hue'
-export HUE_DB_PASS='Hue_DB_2026'
 export HIVE_DB_NAME='metastore'
 export HIVE_DB_USER='hive'
-export HIVE_DB_PASS='Hive_DB_2026'
 export RANGER_DB_NAME='ranger'
 export RANGER_DB_USER='rangeradmin'
-export RANGER_DB_PASS='Ranger_DB_2026'
-
 
 # ---- Hue / PostgreSQL FIPS psycopg2 readiness ----
-# Host Inspector flags PostgreSQL-backed Hue unless psycopg2 >= 2.9.5 is available.
-# On FIPS hosts, do not use psycopg2-binary because it bundles its own libssl.
-# This installs psycopg2 from source using PGDG pg_config.
 export INSTALL_HUE_FIPS_PSYCOPG2='true'
 export HUE_PSYCOPG2_VERSION='2.9.9'
-export HUE_PSYCOPG2_PYTHON_BIN='/usr/bin/python3.8'
-
-# ---- External repo behavior ----
-export ALLOW_EXTERNAL='true'
-export ENABLE_PGDG='true'
-export ENABLE_EPEL='false'
-export DISABLE_FIREWALLD='false'
-export DISABLE_SELINUX='false'
+export HUE_PSYCOPG2_PYTHON_BIN="${CM_AGENT_PYTHON_BIN}"
+export HUE_PSYCOPG2_BUILD_PACKAGES="perl-IPC-Run gcc ${CM_AGENT_PYTHON_MODULE}-devel postgresql${PG_MAJOR}-devel openssl-devel libffi-devel"
+export HUE_PIP_VERSION_SPEC='pip<25'
 
 # ---- Cloudera Manager ----
-# Change these when moving to a different CM release.
+export CLOUDERA_ARCHIVE_BASE_URL='https://archive.cloudera.com/p'
 export CM_VERSION='7.13.1.0'
 export CM_MAJOR_REPO='cm7'
-export CM_OS_REPO='redhat8'
-export CM_REPO_BASE_URL="https://archive.cloudera.com/p/${CM_MAJOR_REPO}/${CM_VERSION}/${CM_OS_REPO}/yum/"
+export CM_OS_REPO="redhat${EXPECTED_RHEL_MAJOR}"
+export CM_REPO_BASE_URL="${CLOUDERA_ARCHIVE_BASE_URL}/${CM_MAJOR_REPO}/${CM_VERSION}/${CM_OS_REPO}/yum/"
+export CM_REPO_ID='cloudera-manager'
+export CM_REPO_NAME="Cloudera Manager ${CM_VERSION}"
+export CM_REPO_FILE='/etc/yum.repos.d/cloudera-manager.repo'
+export CM_REPO_ENABLED='1'
+export CM_REPO_GPGCHECK='0'
+export CM_REPO_REPO_GPGCHECK='0'
+export CM_REPO_SSLVERIFY='1'
+export CM_REPO_GPGKEY_URL=''
+export CM_MANAGER_PACKAGES='cloudera-manager-daemons cloudera-manager-agent cloudera-manager-server'
+export CM_AGENT_PACKAGES='cloudera-manager-daemons cloudera-manager-agent'
+export CM_PACKAGE_QUERY_REGEX='^cloudera-manager'
+export CM_SERVER_SERVICE='cloudera-scm-server'
+export CM_AGENT_SERVICE='cloudera-scm-agent'
+export CM_SUPERVISORD_SERVICE='cloudera-scm-supervisord'
+export CM_AGENT_CONFIG_FILE='/etc/cloudera-scm-agent/config.ini'
+export CM_AGENT_STATE_DIR='/var/lib/cloudera-scm-agent'
+export CM_AGENT_IDENTITY_FILES='cm_guid uuid'
+export RESET_CM_AGENT_IDENTITY='true'
+export CM_SERVER_DEFAULTS_FILE='/etc/default/cloudera-scm-server'
+export CM_PREP_DATABASE_SCRIPT='/opt/cloudera/cm/schema/scm_prepare_database.sh'
+export CM_DB_TYPE='postgresql'
+# Optional extra arguments inserted after the database type, for example: -h db.example.com -P 5432
+export CM_DB_PREP_EXTRA_ARGS=''
+# false matches the live lab/private-DNS install behavior; set true when required by policy.
+export CM_PREVENT_HOST_HEADER_INJECTION='false'
+export CM_SERVER_LOG_FILE='/var/log/cloudera-scm-server/cloudera-scm-server.log'
+export CM_CERTMANAGER_LOG_FILE='/var/log/cloudera-scm-agent/certmanager.log'
+export CM_FIPS_MODE_PROPERTY='com.cloudera.cmf.fipsMode'
+export CM_FIPS_APPROVED_ONLY_PROPERTY='com.safelogic.cryptocomply.fips.approved_only'
+export CM_FIPS_JDK_PROPERTY_PREFIX='com.cloudera.cloudera.cmf.fipsMode.jdk11plus'
 
 # ---- CDP Runtime parcel repository ----
-# Scripts do not deploy the cluster services for you. This value is printed for CM parcel configuration.
-# ZooKeeper comes from CDP Private Cloud Base / Runtime, not from CFM.
+# Scripts do not deploy cluster services. These values are printed for CM setup.
 export CDP_RUNTIME_VERSION='7.3.1'
 export CDP_PARCEL_REPO_URL=''
 
-# ---- CFM ----
-# CFM build must be consistent across CSD jars, parcel repo, and activated parcel directory.
-# Default uses the CFM 2.1.7.3000 RHEL8 parcel/CSD artifacts.
-# Change all CFM_* values together when moving CFM versions.
+# ---- CFM / NiFi / NiFi Registry ----
 export CFM_STREAM='cfm2'
 export CFM_VERSION='2.1.7.3000'
-export CFM_OS_REPO='redhat8'
-export CFM_PARCEL_REPO_URL="https://archive.cloudera.com/p/${CFM_STREAM}/${CFM_VERSION}/${CFM_OS_REPO}/yum/tars/parcel/"
-export CFM_NIFI_CSD_JAR='NIFI-1.28.1.2.1.7.3000-45.jar'
-export CFM_NIFIREGISTRY_CSD_JAR='NIFIREGISTRY-1.28.1.2.1.7.3000-45.jar'
-# This is the activated parcel directory name under /opt/cloudera/parcels after CM activates the CFM parcel.
-export CFM_PARCEL_DIR_NAME='CFM-2.1.7.3000-45'
+export CFM_BUILD='45'
+export CFM_OS_REPO="redhat${EXPECTED_RHEL_MAJOR}"
+export NIFI_VERSION='1.28.1'
+export NIFI_REGISTRY_VERSION="${NIFI_VERSION}"
+export CFM_PARCEL_REPO_URL="${CLOUDERA_ARCHIVE_BASE_URL}/${CFM_STREAM}/${CFM_VERSION}/${CFM_OS_REPO}/yum/tars/parcel/"
+export CFM_CSD_BASE_URL="${CFM_PARCEL_REPO_URL}"
+export CFM_NIFI_CSD_JAR="NIFI-${NIFI_VERSION}.${CFM_VERSION}-${CFM_BUILD}.jar"
+export CFM_NIFIREGISTRY_CSD_JAR="NIFIREGISTRY-${NIFI_REGISTRY_VERSION}.${CFM_VERSION}-${CFM_BUILD}.jar"
+export CFM_NIFI_CSD_URL="${CFM_CSD_BASE_URL%/}/${CFM_NIFI_CSD_JAR}"
+export CFM_NIFIREGISTRY_CSD_URL="${CFM_CSD_BASE_URL%/}/${CFM_NIFIREGISTRY_CSD_JAR}"
+export CFM_CSD_DIR='/opt/cloudera/csd'
+export CFM_CSD_TMP_DIR="/tmp/cfm-csds-${CFM_VERSION}-${CFM_BUILD}"
+export CFM_CSD_MIN_BYTES='50000'
+export CFM_CSD_OWNER="${CLOUDERA_SERVICE_USER}:${CLOUDERA_SERVICE_GROUP}"
+export CFM_CSD_MODE='0644'
+export CFM_NIFI_CSD_GLOB='NIFI-*.jar'
+export CFM_NIFIREGISTRY_CSD_GLOB='NIFIREGISTRY-*.jar'
+export CFM_PARCEL_DIR_NAME="CFM-${CFM_VERSION}-${CFM_BUILD}"
 export CFM_PARCEL_ROOT="/opt/cloudera/parcels/${CFM_PARCEL_DIR_NAME}"
 export CFM_TOOLKIT_LIB_DIR="${CFM_PARCEL_ROOT}/TOOLKIT/lib"
+export CFM_FIPS_JAR_OWNER='root:root'
+export CFM_FIPS_JAR_MODE='0644'
+export CFM_TOOLKIT_MISSING_IS_WARNING='true'
 
 # ---- SafeLogic / Bouncy Castle FIPS jars ----
-# SafeLogic jar location is configurable.
-# Per current guidance, CDP 7.3.1 uses the same SafeLogic/FIPS jars as CDP 7.1.9.
-# Therefore the default still points to the existing cdp-7.1.9 jar folder.
-# Point FIPS_JAR_SOURCE_DIR at the folder where you uploaded/extracted the SafeLogic jars.
+# CDP 7.3.1 uses the same SafeLogic bundle as 7.1.9 in this tested environment.
 export FIPS_JAR_SOURCE_DIR='/opt/cloudera/fips-jars/cdp-7.1.9'
-# The CFM FIPS doc calls for bctls.jar and ccj-3.0.2.1.jar. If your files are named differently,
-# set these to the exact filenames in FIPS_JAR_SOURCE_DIR.
 export FIPS_BCTLS_JAR='bctls.jar'
 export FIPS_CCJ_JAR='ccj-3.0.2.1.jar'
-# Optional additional jars to copy into the CFM toolkit lib dir. Space-separated filenames.
-# Use this if your SafeLogic bundle requires provider/support jars beyond the two documented files.
 export FIPS_EXTRA_JARS=''
-
-# ---- Active Java FIPS provider configuration ----
-# Cloudera Base / Cloudera Manager FIPS requires the SafeLogic jars to be active under /opt/cloudera/fips
-# and Java security/policy files to be configured before CM Server starts. The scripts copy from
-# FIPS_JAR_SOURCE_DIR into JAVA_FIPS_DIR and rename bctls.jar to bctls-safelogic.jar for the active path.
 export CONFIGURE_JAVA_FIPS='true'
 export JAVA_FIPS_DIR='/opt/cloudera/fips'
+export JAVA_FIPS_DIR_MODE='0755'
+export JAVA_FIPS_JAR_MODE='0644'
+export JAVA_FIPS_OWNER='root:root'
+export JAVA_FIPS_PROFILE_FILE='/etc/profile.d/ccj.sh'
+export JAVA_FIPS_PROFILE_MODE='0755'
 export JAVA_FIPS_CCJ_JAR='ccj-3.0.2.1.jar'
 export JAVA_FIPS_BCTLS_JAR='bctls-safelogic.jar'
 export JAVA_FIPS_CCJ_MODULE='com.safelogic.cryptocomply.fips.core'
 export JAVA_FIPS_BCTLS_MODULE='bctls.safelogic'
+export JAVA_FIPS_CCJ_PROVIDER_CLASS='com.safelogic.cryptocomply.jcajce.provider.CryptoComplyFipsProvider'
+export JAVA_FIPS_BCTLS_PROVIDER_CLASS='org.bouncycastle.jsse.provider.BouncyCastleJsseProvider'
+export JAVA_FIPS_BCTLS_PROVIDER_ARGUMENT='fips:CCJ'
+export JAVA_FIPS_ADD_EXPORT='java.base/sun.security.provider'
+export JAVA_FIPS_KEY_MANAGER_ALGORITHM='X.509'
+export JAVA_FIPS_TRUST_MANAGER_ALGORITHM='PKIX'
+export JAVA_FIPS_STANDARD_PROVIDERS='SUN SunRsaSign SunEC SunJSSE SunJCE SunJGSS SunSASL XMLDSig SunPCSC JdkLDAP JdkSASL'
+export JAVA_FIPS_EXPECTED_CCJ_PROVIDER_NAME='CCJ'
+export JAVA_FIPS_EXPECTED_BCTLS_PROVIDER_NAME='BCJSSE'
+export JAVA_SECURITY_USE_SYSTEM_PROPERTIES_FILE='false'
 
 # ---- NiFi FIPS runtime reminders ----
 export NIFI_SENSITIVE_PROPS_ALGORITHM='NIFI_PBKDF2_AES_GCM_256'
-export NIFI_SENSITIVE_PROPS_KEY='ChangeMeToAtLeast12Chars'
+
+# ---- Auto-TLS utility defaults ----
+# utilities/tls/tls.env is optional and can override these host-specific values.
+export TLS_ENV_FILE=''
+export AUTO_TLS_LOCATION='/opt/cloudera/AutoTLS'
+export AUTO_TLS_WORKDIR="${AUTO_TLS_LOCATION}/artifacts"
+export AUTO_TLS_HOSTS_CSV="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/utilities/tls/hosts.csv"
+export AUTO_TLS_ENCRYPT_HOST_KEYS='true'
+export AUTO_TLS_COUNTRY='US'
+export AUTO_TLS_STATE='VA'
+export AUTO_TLS_LOCALITY='Reston'
+export AUTO_TLS_ORG='Cloudera'
+export AUTO_TLS_ORG_UNIT='Demo'
+export AUTO_TLS_VALIDITY_DAYS='825'
+export AUTO_TLS_CERT_DAYS='825'
+export AUTO_TLS_CA_DAYS='3650'
+export AUTO_TLS_CA_CN='CFM Internal CA'
+export AUTO_TLS_KEY_ALGORITHM='RSA'
+export AUTO_TLS_PRIVATE_KEY_CIPHER='aes-256-cbc'
+export AUTO_TLS_KEY_USAGE='critical, digitalSignature, keyEncipherment'
+export AUTO_TLS_EXTENDED_KEY_USAGE='serverAuth, clientAuth'
+export AUTO_TLS_CA_BASIC_CONSTRAINTS='critical, CA:true'
+export AUTO_TLS_CA_KEY_USAGE='critical, keyCertSign, cRLSign'
+export AUTO_TLS_HOST_BASIC_CONSTRAINTS='CA:false'
+export AUTO_TLS_KEY_SIZE='4096'
+export AUTO_TLS_KEYGEN_PKEYOPT="rsa_keygen_bits:${AUTO_TLS_KEY_SIZE}"
+export AUTO_TLS_DIGEST='sha256'
+export AUTO_TLS_STORE_TYPE='PKCS12'
+export AUTO_TLS_CA_STORE_ALIAS='cfm-ca-chain'
+export AUTO_TLS_KEY_DIR="${AUTO_TLS_WORKDIR}/keys"
+export AUTO_TLS_CSR_DIR="${AUTO_TLS_WORKDIR}/csrs"
+export AUTO_TLS_CERT_DIR="${AUTO_TLS_WORKDIR}/certs"
+export AUTO_TLS_STORE_DIR="${AUTO_TLS_WORKDIR}/stores"
+export AUTO_TLS_PAYLOAD_DIR="${AUTO_TLS_WORKDIR}/payload"
+export AUTO_TLS_PAYLOAD_FILE="${AUTO_TLS_PAYLOAD_DIR}/generate_cmca_payload.json"
+export AUTO_TLS_CA_DIR="${AUTO_TLS_WORKDIR}/ca"
+export AUTO_TLS_CA_CERT_DIR="${AUTO_TLS_WORKDIR}/ca-certs"
+export AUTO_TLS_FULLCHAIN_DIR="${AUTO_TLS_WORKDIR}/fullchains"
+export AUTO_TLS_OPENSSL_DIR="${AUTO_TLS_WORKDIR}/openssl"
+export AUTO_TLS_PASSWORD_DIR="${AUTO_TLS_WORKDIR}/passwords"
+export AUTO_TLS_HOSTS_KEY_STORE_DIR="${AUTO_TLS_LOCATION}/hosts-key-store"
+export AUTO_TLS_HOST_KEY_PASSWORD_FILENAME='cm-auto-host_key.pw'
+export AUTO_TLS_CA_KEY_FILE="${AUTO_TLS_CA_DIR}/demo-ca-key.pem"
+export AUTO_TLS_CA_CERT_FILE="${AUTO_TLS_CA_DIR}/demo-ca-cert.pem"
+export AUTO_TLS_CA_CHAIN_FILE="${AUTO_TLS_CA_DIR}/ca-chain.pem"
+export AUTO_TLS_CA_OPENSSL_CONFIG="${AUTO_TLS_CA_DIR}/demo-ca-openssl.cnf"
+export AUTO_TLS_LOCATION_MODE='0755'
+export AUTO_TLS_WORKDIR_MODE='0750'
+export AUTO_TLS_PRIVATE_DIR_MODE='0700'
+export AUTO_TLS_FILE_MODE='0640'
+export AUTO_TLS_PRIVATE_FILE_MODE='0600'
+export AUTO_TLS_OWNER="${CLOUDERA_SERVICE_USER}:${CLOUDERA_SERVICE_GROUP}"
+export AUTO_TLS_CM_SCHEME="${CM_HTTP_SCHEME}"
+export AUTO_TLS_CM_HOST="${MANAGER_HOST}"
+export AUTO_TLS_CM_PORT="${CM_HTTP_PORT}"
+export AUTO_TLS_CM_HTTPS_PORT="${CM_HTTPS_PORT}"
+export AUTO_TLS_CM_API_VERSION='v41'
+export AUTO_TLS_CM_USER="${CM_ADMIN_USER}"
+export AUTO_TLS_CM_PASSWORD="${CM_ADMIN_PASSWORD}"
+export AUTO_TLS_GENERATE_CMCA_PATH='/cm/commands/generateCmca'
+export AUTO_TLS_CM_VERSION_PATH='/cm/version'
+export AUTO_TLS_SSH_USER='autotls'
+export AUTO_TLS_SSH_PORT='22'
+export AUTO_TLS_SSH_KEY_FILE='/home/autotls/.ssh/id_rsa'
+export AUTO_TLS_CONFIGURE_ALL_SERVICES='true'
+export AUTO_TLS_HTTP_RESPONSE_FILE='/tmp/autotls_generate_cmca_response.json'
+export AUTO_TLS_HOSTS_CHECK_FILE='/tmp/autotls_hosts_to_check.txt'
+export AUTO_TLS_CM_VERSION_RESPONSE_FILE='/tmp/cm_version_response.txt'
+export AUTO_TLS_SSH_TEST_OUTPUT_FILE='/tmp/ssh_test_output.txt'
+export AUTO_TLS_SSH_TEST_ERROR_FILE='/tmp/ssh_test_error.txt'
+export AUTO_TLS_KEY_CHECK_OUTPUT_FILE='/tmp/key_check.txt'
+export AUTO_TLS_KEY_CHECK_ERROR_FILE='/tmp/key_check_err.txt'
+export AUTO_TLS_SUCCESS_HTTP_CODES='200 201 202'
+export AUTO_TLS_REQUIRED_COMMANDS='curl python3 ssh getent openssl'
+export AUTO_TLS_SSH_CONNECT_TIMEOUT_SECONDS='10'
+export AUTO_TLS_KEYSTORE_PASSWORD_FILE="${AUTO_TLS_KEY_DIR}/key.pwd"
+export AUTO_TLS_TRUSTSTORE_PASSWORD_FILE="${AUTO_TLS_CA_DIR}/truststore.pwd"
+export OPENSSL_BIN='openssl'
+export AUTO_TLS_SERVER_LOG_FILE="${CM_SERVER_LOG_FILE}"
+export AUTO_TLS_CERTMANAGER_LOG_FILE="${CM_CERTMANAGER_LOG_FILE}"
+export KEYTOOL_BIN="${JAVA_HOME_TARGET}/bin/keytool"
+
+# ---- Validation behavior ----
+export VALIDATION_STRICT='true'
 
 # ---- Script logging ----
 export LOG_DIR='/var/log/cloudera-bootstrap'

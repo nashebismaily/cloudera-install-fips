@@ -5,56 +5,42 @@ log_init "14_install_cfm_fips_jars"
 need_root
 validate_platform
 
-SRC_DIR="${FIPS_JAR_SOURCE_DIR:-}"
-DEST_DIR="${CFM_TOOLKIT_LIB_DIR:-}"
+[[ -d "${FIPS_JAR_SOURCE_DIR}" ]] || {
+  echo "[ERROR] FIPS_JAR_SOURCE_DIR does not exist: ${FIPS_JAR_SOURCE_DIR}"
+  exit 1
+}
+[[ -d "${CFM_TOOLKIT_LIB_DIR}" ]] || {
+  echo "[ERROR] CFM toolkit lib directory does not exist: ${CFM_TOOLKIT_LIB_DIR}"
+  echo "[INFO] Activate parcel ${CFM_PARCEL_DIR_NAME} before running this script."
+  exit 1
+}
 
-if [[ -z "$SRC_DIR" ]]; then
-  echo "[ERROR] FIPS_JAR_SOURCE_DIR is not set. Set it in EXPORTS to the uploaded SafeLogic jar directory."
-  exit 1
-fi
-if [[ ! -d "$SRC_DIR" ]]; then
-  echo "[ERROR] FIPS_JAR_SOURCE_DIR does not exist: $SRC_DIR"
-  echo "Upload/extract the SafeLogic jars there, or update EXPORTS."
-  exit 1
-fi
-if [[ -z "$DEST_DIR" ]]; then
-  echo "[ERROR] CFM_TOOLKIT_LIB_DIR is not set."
-  exit 1
-fi
-if [[ ! -d "$DEST_DIR" ]]; then
-  echo "[ERROR] CFM toolkit lib directory does not exist: $DEST_DIR"
-  echo "Activate the CFM parcel first, or update CFM_PARCEL_DIR_NAME/CFM_TOOLKIT_LIB_DIR in EXPORTS."
-  exit 1
-fi
-
-JARS=("${FIPS_BCTLS_JAR:-bctls.jar}" "${FIPS_CCJ_JAR:-ccj-3.0.2.1.jar}")
-if [[ -n "${FIPS_EXTRA_JARS:-}" ]]; then
-  # shellcheck disable=SC2206
-  EXTRA=( ${FIPS_EXTRA_JARS} )
-  JARS+=("${EXTRA[@]}")
+JARS=("${FIPS_BCTLS_JAR}" "${FIPS_CCJ_JAR}")
+if [[ -n "${FIPS_EXTRA_JARS}" ]]; then
+  read -r -a extra_jars <<< "${FIPS_EXTRA_JARS}"
+  JARS+=("${extra_jars[@]}")
 fi
 
 echo "==== Copying SafeLogic/Bouncy Castle FIPS jars ===="
-echo "Source:      $SRC_DIR"
-echo "Destination: $DEST_DIR"
-
+echo "Source: ${FIPS_JAR_SOURCE_DIR}"
+echo "Destination: ${CFM_TOOLKIT_LIB_DIR}"
 for jar in "${JARS[@]}"; do
-  if [[ ! -f "$SRC_DIR/$jar" ]]; then
-    echo "[ERROR] Missing jar: $SRC_DIR/$jar"
-    echo "Current files in source directory:"
-    ls -lh "$SRC_DIR" || true
+  [[ -f "${FIPS_JAR_SOURCE_DIR}/${jar}" ]] || {
+    echo "[ERROR] Missing jar: ${FIPS_JAR_SOURCE_DIR}/${jar}"
+    ls -lh "${FIPS_JAR_SOURCE_DIR}" || true
     exit 1
-  fi
-  cp -af "$SRC_DIR/$jar" "$DEST_DIR/"
-  chmod 644 "$DEST_DIR/$jar"
-  echo "[OK] Copied $jar"
+  }
+  cp -af "${FIPS_JAR_SOURCE_DIR}/${jar}" "${CFM_TOOLKIT_LIB_DIR}/"
+  chown "${CFM_FIPS_JAR_OWNER}" "${CFM_TOOLKIT_LIB_DIR}/${jar}"
+  chmod "${CFM_FIPS_JAR_MODE}" "${CFM_TOOLKIT_LIB_DIR}/${jar}"
+  echo "[OK] Copied ${jar}"
 done
-
-ls -lh "$DEST_DIR" | grep -E "$(printf '%s|' "${JARS[@]}" | sed 's/|$//')" || true
+restorecon -Rv "${CFM_TOOLKIT_LIB_DIR}" 2>/dev/null || true
+ls -lh "${CFM_TOOLKIT_LIB_DIR}" | grep -E "$(printf '%s|' "${JARS[@]}" | sed 's/|$//')" || true
 
 cat <<EOFMSG
 
 [OK] CFM FIPS jars copied.
-Later, when configuring real-certificate TLS for NiFi/NiFi Registry, use BCFKS keystores/truststores and add the FIPS bootstrap safety-valve settings from README.md.
+Use the configured FIPS-compatible keystore/truststore and bootstrap settings when TLS is enabled for NiFi and NiFi Registry.
 
 EOFMSG

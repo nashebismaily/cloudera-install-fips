@@ -1,37 +1,31 @@
 #!/usr/bin/env bash
-# Run this on each agent/worker node.
-# Edit EXPORTS first, especially credentials, MANAGER_HOST, and AGENT_HOST.
-
+# Run on each remote agent/worker node after editing EXPORTS.
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./EXPORTS
 
 run_step() {
-  local desc="$1"
+  local description="$1"
   shift
   echo
   echo "========================================================================"
-  echo "Running: ${desc}"
+  echo "Running: ${description}"
   echo "Command: $*"
   echo "========================================================================"
   "$@"
 }
 
-if [[ -z "${MANAGER_HOST:-}" ]]; then
-  echo "[ERROR] MANAGER_HOST must be set in EXPORTS before running RUN_AGENT."
-  exit 1
-fi
-
-run_step "preflight connectivity" sudo -E bash 00_check_connectivity.sh
-run_step "bootstrap OS repositories" sudo -E bash 01_bootstrap_repos.sh
-run_step "install common packages" sudo -E bash 02_install_common_packages.sh
-run_step "configure operating system" sudo -E bash 03_configure_os.sh
-run_step "install/validate Java 11" sudo -E bash 04_install_java11_fips_runtime.sh
-run_step "add Cloudera Manager repos" sudo -E bash 08_add_cloudera_repos.sh
-run_step "install Cloudera Manager agent packages" sudo -E bash 09_install_cm_packages.sh agent
-run_step "configure Cloudera Manager agent" sudo -E bash 10_configure_cm_agent.sh "${MANAGER_HOST}"
-run_step "validate ready state" sudo -E bash 15_validate_ready_state.sh
+[[ -n "${MANAGER_HOST}" ]] || { echo '[ERROR] MANAGER_HOST must be set in EXPORTS before running RUN_AGENT.'; exit 1; }
+run_step 'preflight connectivity' sudo -E bash 00_check_connectivity.sh
+run_step 'bootstrap OS repositories' sudo -E bash 01_bootstrap_repos.sh
+run_step 'install common packages' sudo -E bash 02_install_common_packages.sh
+run_step 'configure operating system' sudo -E bash 03_configure_os.sh
+run_step "install/validate Java ${JAVA_MAJOR} and FIPS providers" sudo -E bash 04_install_java11_fips_runtime.sh
+run_step "add Cloudera Manager ${CM_VERSION} repository" sudo -E bash 08_add_cloudera_repos.sh
+run_step 'install Cloudera Manager agent packages' sudo -E bash 09_install_cm_packages.sh agent
+run_step 'configure Cloudera Manager agent' sudo -E bash 10_configure_cm_agent.sh "${MANAGER_HOST}"
+run_step 'validate agent ready state' sudo -E bash 15_validate_ready_state.sh
 
 echo
-echo "[OK] RUN_AGENT complete."
-echo "If this node will run NiFi/NiFi Registry, run 14_install_cfm_fips_jars.sh later after the CFM parcel is activated on this node."
+echo '[OK] RUN_AGENT complete.'
+echo "If this host receives parcel ${CFM_PARCEL_DIR_NAME}, run 14_install_cfm_fips_jars.sh after activation."

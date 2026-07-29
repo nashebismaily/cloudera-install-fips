@@ -5,48 +5,52 @@ log_init "01_bootstrap_repos"
 need_root
 validate_platform
 
-if [[ "${ALLOW_EXTERNAL:-true}" != "true" ]]; then
-  echo "[INFO] ALLOW_EXTERNAL=false. Current repos only:"
+if [[ "${ALLOW_EXTERNAL}" != "true" ]]; then
+  echo "[INFO] ALLOW_EXTERNAL=false. Current repositories only:"
   dnf repolist || true
   exit 0
 fi
 
 dnf clean all || true
 
-# PostgreSQL 14 devel depends on packages such as perl-IPC-Run that are commonly
-# in CodeReady Builder on RHEL 8 RHUI images. Enable it before installing PGDG packages.
-if [[ "${ENABLE_CODEREADY:-true}" == "true" ]]; then
-  echo "==== Enabling CodeReady Builder for RHEL 8 RHUI if present ===="
-  if dnf repolist all | grep -q '^codeready-builder-for-rhel-8-rhui-rpms'; then
-    dnf config-manager --set-enabled codeready-builder-for-rhel-8-rhui-rpms
-    echo "[OK] Enabled codeready-builder-for-rhel-8-rhui-rpms"
-  elif dnf repolist all | grep -q '^codeready-builder-for-rhel-8-.*-rpms'; then
-    CRB_REPO="$(dnf repolist all | awk '/^codeready-builder-for-rhel-8-.*-rpms/ {print $1; exit}')"
-    dnf config-manager --set-enabled "$CRB_REPO"
-    echo "[OK] Enabled ${CRB_REPO}"
+if [[ "${ENABLE_CODEREADY}" == "true" ]]; then
+  echo "==== Enabling CodeReady Builder if present ===="
+  if dnf repolist all | grep -q "^${CODEREADY_REPO_ID}"; then
+    dnf config-manager --set-enabled "${CODEREADY_REPO_ID}"
+    echo "[OK] Enabled ${CODEREADY_REPO_ID}"
   else
-    echo "[WARN] CodeReady Builder repo not found. PostgreSQL devel may fail if perl-IPC-Run is unavailable."
+    CRB_REPO="$(dnf repolist all | awk -v pattern="${CODEREADY_REPO_PATTERN}" '$1 ~ pattern {print $1; exit}')"
+    if [[ -n "${CRB_REPO}" ]]; then
+      dnf config-manager --set-enabled "${CRB_REPO}"
+      echo "[OK] Enabled ${CRB_REPO}"
+    else
+      echo "[WARN] CodeReady Builder repository not found. PostgreSQL development dependencies may be unavailable."
+    fi
   fi
 else
-  echo "[INFO] CodeReady Builder disabled by ENABLE_CODEREADY=false"
+  echo "[INFO] CodeReady Builder disabled by configuration"
 fi
 
-if [[ "${ENABLE_EPEL:-false}" == "true" ]]; then
-  echo "==== Installing EPEL for EL8 ===="
-  dnf install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm"
+if [[ "${ENABLE_EPEL}" == "true" ]]; then
+  echo "==== Installing EPEL repository ===="
+  dnf install -y "${EPEL_RELEASE_RPM_URL}"
 else
-  echo "[INFO] EPEL disabled by ENABLE_EPEL=false"
+  echo "[INFO] EPEL disabled by configuration"
 fi
 
-if [[ "${ENABLE_PGDG:-true}" == "true" ]]; then
-  echo "==== Installing PGDG repo for EL8 ===="
-  dnf install -y "https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
-  dnf -qy module disable postgresql || true
+if [[ "${ENABLE_PGDG}" == "true" ]]; then
+  echo "==== Installing PGDG repository ===="
+  # Live-install fix: import the PGDG signing key before installing the repo RPM.
+  rpm --import "${PGDG_GPG_KEY_URL}"
+  dnf install -y "${PGDG_REPO_RPM_URL}"
+  if [[ "${DISABLE_OS_POSTGRES_MODULE}" == "true" ]]; then
+    dnf -qy module disable "${POSTGRES_OS_MODULE_NAME}" || true
+  fi
 else
-  echo "[INFO] PGDG disabled by ENABLE_PGDG=false"
+  echo "[INFO] PGDG disabled by configuration"
 fi
 
 dnf makecache || true
 dnf repolist || true
 
-echo "[OK] Repo bootstrap complete"
+echo "[OK] Repository bootstrap complete"

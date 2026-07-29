@@ -3,44 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
 
-if [[ ! -f ./tls.env ]]; then
-  echo "[ERROR] tls.env not found in ${SCRIPT_DIR}"
-  echo "[ERROR] Copy tls.env.example to tls.env and edit it."
-  exit 1
-fi
+prepare_dirs
+apply_owner_if_available
 
-source ./tls.env
-
-: "${AUTO_TLS_LOCATION:?AUTO_TLS_LOCATION is required}"
-: "${AUTO_TLS_WORKDIR:?AUTO_TLS_WORKDIR is required}"
-: "${AUTO_TLS_KEY_DIR:?AUTO_TLS_KEY_DIR is required}"
-: "${AUTO_TLS_CSR_DIR:?AUTO_TLS_CSR_DIR is required}"
-: "${AUTO_TLS_CERT_DIR:?AUTO_TLS_CERT_DIR is required}"
-: "${AUTO_TLS_STORE_DIR:?AUTO_TLS_STORE_DIR is required}"
-: "${AUTO_TLS_PAYLOAD_DIR:?AUTO_TLS_PAYLOAD_DIR is required}"
-
-mkdir -p \
-  "${AUTO_TLS_LOCATION}" \
-  "${AUTO_TLS_WORKDIR}" \
-  "${AUTO_TLS_KEY_DIR}" \
-  "${AUTO_TLS_CSR_DIR}" \
-  "${AUTO_TLS_CERT_DIR}" \
-  "${AUTO_TLS_STORE_DIR}" \
-  "${AUTO_TLS_PAYLOAD_DIR}" \
-  "${AUTO_TLS_WORKDIR}/ca" \
-  "${AUTO_TLS_WORKDIR}/ca-certs" \
-  "${AUTO_TLS_WORKDIR}/fullchains" \
-  "${AUTO_TLS_WORKDIR}/openssl" \
-  "${AUTO_TLS_WORKDIR}/passwords"
-
-chmod 755 "${AUTO_TLS_LOCATION}"
-chmod 750 "${AUTO_TLS_WORKDIR}"
-chmod 700 "${AUTO_TLS_KEY_DIR}" "${AUTO_TLS_WORKDIR}/ca" "${AUTO_TLS_WORKDIR}/passwords"
-
-if id cloudera-scm >/dev/null 2>&1; then
-  chown -R cloudera-scm:cloudera-scm "${AUTO_TLS_LOCATION}"
-fi
-
-echo "[OK] Prepared TLS artifact directories under ${AUTO_TLS_WORKDIR}"
+echo "[OK] Prepared customer-style Auto-TLS directories under ${AUTO_TLS_WORKDIR}"
 find "${AUTO_TLS_WORKDIR}" -maxdepth 2 -type d | sort
+
+echo "[INFO] Host private-key mode: $(host_key_mode_label)"
+echo "[INFO] Private keys stay in: ${AUTO_TLS_KEY_DIR}"
+echo "[INFO] CSRs sent to the customer are placed in: ${AUTO_TLS_CSR_DIR}"
+echo "[INFO] Customer-issued certificates are returned to: ${AUTO_TLS_CERT_DIR}"
+
+# Customer-generated key/CSR pairs can be staged before step 01 using the
+# exact <host_id>-key.pem and <host_id>-csr.pem filenames. Step 01 reuses and
+# validates them when AUTO_TLS_OVERWRITE_KEYS=false.

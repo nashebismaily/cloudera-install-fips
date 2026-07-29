@@ -6,64 +6,68 @@ need_root
 validate_platform
 require_cloudera_credentials
 
-CSD_DIR="/opt/cloudera/csd"
-TMP_DIR="/tmp/cfm-csds-${CFM_VERSION}"
-mkdir -p "$CSD_DIR" "$TMP_DIR"
-
-NIFI_URL="${CFM_PARCEL_REPO_URL%/}/${CFM_NIFI_CSD_JAR}"
-REG_URL="${CFM_PARCEL_REPO_URL%/}/${CFM_NIFIREGISTRY_CSD_JAR}"
-
+mkdir -p "${CFM_CSD_DIR}" "${CFM_CSD_TMP_DIR}"
 echo "==== CFM CSD configuration ===="
 echo "CFM_VERSION=${CFM_VERSION}"
 echo "CFM parcel repo=${CFM_PARCEL_REPO_URL}"
-echo "NiFi CSD=${NIFI_URL}"
-echo "NiFi Registry CSD=${REG_URL}"
+echo "NiFi CSD=${CFM_NIFI_CSD_URL}"
+echo "NiFi Registry CSD=${CFM_NIFIREGISTRY_CSD_URL}"
 
-cd "$TMP_DIR"
+cd "${CFM_CSD_TMP_DIR}"
 rm -f ./*.jar
-curl_download_auth "$NIFI_URL" "$CFM_NIFI_CSD_JAR"
-curl_download_auth "$REG_URL" "$CFM_NIFIREGISTRY_CSD_JAR"
+curl_download_auth "${CFM_NIFI_CSD_URL}" "${CFM_NIFI_CSD_JAR}"
+curl_download_auth "${CFM_NIFIREGISTRY_CSD_URL}" "${CFM_NIFIREGISTRY_CSD_JAR}"
 
-for f in "$CFM_NIFI_CSD_JAR" "$CFM_NIFIREGISTRY_CSD_JAR"; do
-  size="$(stat -c%s "$f")"
-  if [[ "$size" -lt 50000 ]]; then
-    echo "[ERROR] Downloaded file is too small: $f ($size bytes)"
-    head -20 "$f" || true
+for file_name in "${CFM_NIFI_CSD_JAR}" "${CFM_NIFIREGISTRY_CSD_JAR}"; do
+  size="$(stat -c%s "${file_name}")"
+  if [[ "${size}" -lt "${CFM_CSD_MIN_BYTES}" ]]; then
+    echo "[ERROR] Downloaded file is too small: ${file_name} (${size} bytes)"
+    head -20 "${file_name}" || true
     exit 1
   fi
-  echo "[OK] $f ($size bytes)"
+  echo "[OK] ${file_name} (${size} bytes)"
 done
 
-# Remove older NiFi/Registry CSDs only, not every CSD on the system.
-rm -f "$CSD_DIR"/NIFI-*.jar "$CSD_DIR"/NIFIREGISTRY-*.jar
-cp -f "$TMP_DIR"/*.jar "$CSD_DIR"/
-chown cloudera-scm:cloudera-scm "$CSD_DIR"/*.jar
-chmod 644 "$CSD_DIR"/*.jar
-ls -lh "$CSD_DIR" | grep -E 'NIFI|NIFIREGISTRY' || true
+rm -f "${CFM_CSD_DIR}"/${CFM_NIFI_CSD_GLOB} "${CFM_CSD_DIR}"/${CFM_NIFIREGISTRY_CSD_GLOB}
+cp -f "${CFM_CSD_TMP_DIR}"/*.jar "${CFM_CSD_DIR}/"
+chown "${CFM_CSD_OWNER}" "${CFM_CSD_DIR}"/*.jar
+chmod "${CFM_CSD_MODE}" "${CFM_CSD_DIR}"/*.jar
+ls -lh "${CFM_CSD_DIR}" | grep -E 'NIFI|NIFIREGISTRY' || true
 
-if systemctl is-active --quiet cloudera-scm-server; then
+if systemctl is-active --quiet "${CM_SERVER_SERVICE}"; then
   echo "==== Restarting Cloudera Manager Server to load CSDs ===="
-  systemctl restart cloudera-scm-server
-  echo "Waiting for CM to return on 7180"
-  for i in {1..90}; do
-    if ss -plnt | grep -q ':7180'; then
-      echo "[OK] CM listening on 7180"
+  systemctl restart "${CM_SERVER_SERVICE}"
+  ready='false'
+  for ((attempt=1; attempt<=CM_WAIT_ATTEMPTS; attempt++)); do
+    if ss -plnt | grep -q ":${CM_HTTP_PORT}"; then
+      ready='true'
       break
     fi
-    sleep 5
+    echo "Waiting for CM restart ${attempt}/${CM_WAIT_ATTEMPTS}"
+    sleep "${CM_WAIT_INTERVAL_SECONDS}"
   done
+  if [[ "${ready}" != 'true' ]]; then
+    echo "[ERROR] CM did not return on port ${CM_HTTP_PORT} after loading CSDs."
+    echo "[INFO] Check ${CM_SERVER_LOG_FILE}"
+    exit 1
+  fi
+  local_url="${CM_HTTP_SCHEME}://${LOCALHOST_NAME}:${CM_HTTP_PORT}"
+  curl_head_public "${local_url}" || {
+    echo "[ERROR] CM is listening but did not respond locally after the CSD restart: ${local_url}"
+    exit 1
+  }
+  echo "[OK] CM returned and responds locally after loading CSDs: ${local_url}"
 else
-  echo "[INFO] CM server is not running; CSDs will load when CM starts."
+  echo "[INFO] CM server is not running; CSDs will load when it starts."
 fi
 
 cat <<EOFMSG
 
 [OK] CFM CSDs installed.
-Next in Cloudera Manager UI:
-  1. Add this CFM parcel repository URL:
-     ${CFM_PARCEL_REPO_URL}
+Next in Cloudera Manager:
+  1. Add CFM parcel repository: ${CFM_PARCEL_REPO_URL}
   2. Download, distribute, and activate the CFM parcel.
-  3. Deploy CDP Base services first, including ZooKeeper from CDP Runtime ${CDP_RUNTIME_VERSION}.
+  3. Deploy CDP Runtime ${CDP_RUNTIME_VERSION} services first, including ZooKeeper.
   4. Deploy NiFi and NiFi Registry after the CFM parcel is active.
 
 EOFMSG
