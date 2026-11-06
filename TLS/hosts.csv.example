@@ -1,0 +1,3 @@
+host_id,common_name,dns_sans,ip_sans
+cm01.example.com,cm01.example.com,cm01.example.com;cm-vip.example.com,10.0.3.55
+nifi01.example.com,nifi01.example.com,nifi01.example.com,10.0.11.4

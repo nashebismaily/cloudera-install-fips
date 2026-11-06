@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.class
+hosts.csv
+tls.env
+*.key
+*-key.pem
+*.bcfks
+*.p12
+*.jks
+artifacts/
+*.log
