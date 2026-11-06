@@ -1,0 +1,16 @@
+
+# macOS metadata
+.DS_Store
+__pycache__/
+*.py[cod]
+*.class
+utilities/tls/tls.env
+utilities/tls/hosts.csv
+.state/
+*.log
+*.key
+*-key.pem
+*.bcfks
+*.p12
+*.jks
+artifacts/

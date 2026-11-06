@@ -1,3 +1,20 @@
+# Cloudera installation kits
+
+| Installation | Guide |
+|---|---|
+| **RHEL 9.8 + FIPS + NiFi 2** | [RHEL9/INSTALL.md](RHEL9/INSTALL.md) |
+| Existing RHEL8 FIPS / NiFi 1 | Legacy guide below; run commands from `RHEL8/` |
+
+The RHEL9 kit merges the FIPS and non-FIPS deployment lessons and pins CM **7.13.2.10000**, CDP **7.3.2.10000** and CFM **4.12.0.10001** with Java **17 + 21** and the supplied CCJ **4.0.0** SP1 bundle. It disables firewalld/fapolicyd as requested, preserves OS FIPS, and includes PostgreSQL, Auto-TLS, Runtime/ZooKeeper and NiFi/Registry steps.
+
+RHEL **9.8** is the internally confirmed customer target. Public Cloudera FIPS instructions currently list **9.6**. See [source evidence](RHEL9/SOURCES.md), [merge notes](RHEL9/MERGE_NOTES.md) and [validation status](RHEL9/VALIDATION.md). Site credentials, approved JDKs, the actual SafeLogic tarball and certificates are required; they are not embedded here.
+
+---
+
+# Legacy RHEL8 installation guide
+
+The original instructions below describe the RHEL8 profile. Configuration and scripts now live in `RHEL8/`; use that working directory when following them. For the new installation use the RHEL9 guide above.
+
 # CFM FIPS Install Kit
 
 This repository prepares and installs a Cloudera Manager, CDP Runtime, and Cloudera Flow Management environment on FIPS-enabled RHEL 8.10.
