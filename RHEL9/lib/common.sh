@@ -356,12 +356,40 @@ stage_java_fips_jars() {
   done
   restorecon -Rv "${JAVA_FIPS_DIR}" 2>/dev/null || true
 }
+validate_fips_module_name() {
+  local filename="$1" expected="$2" output release
+  local jar_command=(env -u JDK_JAVA_OPTIONS -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS
+    "${JAVA_HOME_TARGET}/bin/jar" "--file=${JAVA_FIPS_DIR}/${filename}" --describe-module)
+  if ! output="$("${jar_command[@]}" 2>&1)"; then
+    printf '%s\n' "[ERROR] Cannot read module descriptor: ${filename}" "${output}"; return 1
+  fi
+  # Multi-release JARs can store module-info.class only under META-INF/versions.
+  # In that case jar exits successfully but asks for --release instead of
+  # printing the module name. Read the newest advertised descriptor supported
+  # by the CM JDK, which is also the minimum Java version used by this profile.
+  release="$(awk -v maximum="${JAVA_MAJOR}" '
+    $1 == "releases:" {
+      for (i=2; i<=NF; i++)
+        if ($i ~ /^[0-9]+$/ && $i <= maximum && $i > best) best=$i
+    }
+    END { if (best) print best }
+  ' <<< "${output}")"
+  if [[ -n "${release}" ]]; then
+    if ! output="$("${jar_command[@]}" --release "${release}" 2>&1)"; then
+      printf '%s\n' "[ERROR] Cannot read ${filename} module descriptor for release ${release}" "${output}"; return 1
+    fi
+  fi
+  if ! awk -v expected="${expected}" '
+    $1 == expected || index($1, expected "@") == 1 { found=1 }
+    END { exit !found }
+  ' <<< "${output}"; then
+    printf '%s\n' "[ERROR] Module name mismatch for ${filename}; expected ${expected}" "${output}"; return 1
+  fi
+  echo "[OK] ${filename}: module ${expected}${release:+ (release ${release})}"
+}
 validate_fips_module_names() {
-  local output
-  output="$(env -u JDK_JAVA_OPTIONS -u JAVA_TOOL_OPTIONS "${JAVA_HOME_TARGET}/bin/jar" --file="${JAVA_FIPS_DIR}/${FIPS_CCJ_JAR}" --describe-module)"
-  [[ "${output}" == *"${JAVA_FIPS_CCJ_MODULE}"* ]] || { echo '[ERROR] CCJ module name differs from the configured approved bundle'; return 1; }
-  output="$(env -u JDK_JAVA_OPTIONS -u JAVA_TOOL_OPTIONS "${JAVA_HOME_TARGET}/bin/jar" --file="${JAVA_FIPS_DIR}/${FIPS_BCTLS_JAR}" --describe-module)"
-  [[ "${output}" == *"${JAVA_FIPS_BCTLS_MODULE}"* ]] || { echo '[ERROR] BCTLS module name differs from the configured approved bundle'; return 1; }
+  validate_fips_module_name "${FIPS_CCJ_JAR}" "${JAVA_FIPS_CCJ_MODULE}" || return 1
+  validate_fips_module_name "${FIPS_BCTLS_JAR}" "${JAVA_FIPS_BCTLS_MODULE}"
 }
 write_jdk_java_options_profile() {
   export JDK_JAVA_OPTIONS="$(fips_java_options)"
@@ -528,3 +556,4 @@ validate_install_inputs() {
   # Java is installed by step 04. Preflight must work on a clean host without
   # JDK homes, JDK archives or archive checksums; validate those only in step 04.
 }
+
