@@ -92,7 +92,7 @@ The working capture used the CCJ 3.0.2.1 module path from CFM 2.1.7.3000-45. Thi
 
 Use the `JAVA_PUBLIC_TRUSTSTORE_PASSWORD` that step 04 used to create the BCFKS file on the NiFi host. All hosts sharing a CM role group need a matching truststore password. Step 16 writes the manager's password as an XML-escaped value in `nifi-bootstrap.xml`. Use that value when it matches the NiFi hosts. The JVM uses this store to initialize its default SSL context for internal clients while NiFi serves its UI over HTTP.
 
-## Start and verify
+## Start and verify NiFi
 
 Save the safety valves, start NiFi in CM, and open `http://<nifi-host>:8080/nifi/`. On the NiFi host, run the runtime check from `RHEL9/`.
 
@@ -108,6 +108,42 @@ JAVA_HOME_TARGET="$CFM_JAVA_HOME" fips_keytool -list \
   -keystore "$JAVA_PUBLIC_TRUSTSTORE" -storetype BCFKS \
   -storepass:env JAVA_PUBLIC_TRUSTSTORE_PASSWORD >/dev/null
 ```
+
+## Add and configure NiFi Registry
+
+In CM, select **Add Service → NiFi Registry**. For the two-host lab, place the Registry role on the NiFi worker and select **No Optional Dependencies**. [Cloudera Registry installation guide](https://docs.cloudera.com/cfm/4.12.0/deployment/topics/cfm-add-nifi-registry-hybrid.html)
+
+Set these values on the **NiFi Registry → Configuration** page.
+
+| CM setting | Lab value |
+|---|---|
+| Custom Java Home | `/opt/java/jdk-21` |
+| Enable TLS/SSL | Unchecked |
+| Initial Admin Identity | Blank |
+| NiFi Registry JDBC URL | `jdbc:postgresql://<db-host>:5432/nifireg?sslmode=disable` |
+| NiFi Registry JDBC Driver | `org.postgresql.Driver` |
+| NiFi Registry H2 directory storage location | `/usr/share/java` |
+| NiFi Registry Database Username | `nifireg` |
+| NiFi Registry Database Password | `REG_DB_PASS` from the manager's `EXPORTS` |
+
+Use the manager's `DB_HOST` from `EXPORTS` for `<db-host>`. Step 07 creates the `nifireg` database and user, and step 09 installs the PostgreSQL JDBC driver on the worker. The field labeled **H2 directory storage location** supplies the PostgreSQL JDBC driver directory. [Cloudera Registry PostgreSQL settings](https://docs.cloudera.com/cfm/4.12.0/deployment/topics/cfm-configuring-nif-registry-metadata-stores-postgres.html)
+
+In **NiFi Registry → Configuration → Advanced**, apply both safety valves in **XML view**.
+
+| CM safety valve | Content |
+|---|---|
+| Registry `staging/bootstrap.conf.xml` | The same working FIPS bootstrap XML as NiFi, including the BCFKS path, type, and password |
+| Registry properties safety valve | `/var/lib/cloudera-bootstrap/cfm-config/registry-properties.xml` from the manager |
+
+Step 16 generates the Registry properties snippet with HTTP on `0.0.0.0:18080`. Use the BCFKS password that was used to create the truststore on the Registry host. [NiFi bootstrap safety valve](#nifi-bootstrap-safety-valve)
+
+Save and start Registry, then open `http://<registry-host>:18080/nifi-registry/`. Run the runtime check from `RHEL9/` on the Registry host.
+
+```bash
+sudo -E bash 17_validate_cfm_runtime.sh registry
+```
+
+To connect NiFi, open **Controller Settings → Registry Clients** in the NiFi UI. Add a client for this Registry and set its URL to the base address `http://<registry-host>:18080`. [Cloudera Registry client setup](https://docs.cloudera.com/cfm/4.12.0/deployment/topics/cfm-connect-nifi-to-registry.html)
 
 ## References
 
