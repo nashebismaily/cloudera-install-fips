@@ -10,6 +10,7 @@ validate_cm_java
 configure_java_fips_safelogic
 install_required_agent_python
 validate_cm_agent_python_wrapper
+install_host_inspector_python
 
 if [[ -z "${MANAGER_ARG}" ]]; then
   echo "Usage: sudo -E bash 10_configure_cm_agent.sh <manager-fqdn-or-private-dns>"
@@ -46,4 +47,8 @@ for service_name in "${CM_SUPERVISORD_SERVICE}" "${CM_AGENT_SERVICE}"; do
   fi
 done
 
+# On a fresh manager, step 12 will register its Java home after CM starts.
+if ! service_exists "${CM_SERVER_SERVICE}" || systemctl is-active --quiet "${CM_SERVER_SERVICE}"; then
+  register_cm_host_java_home "${MANAGER_ARG}"
+fi
 echo "[OK] CM agent services are running and point to ${MANAGER_ARG}:${CM_AGENT_PORT}"

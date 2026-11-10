@@ -264,37 +264,90 @@ validate_cm_agent_python_wrapper() {
   }
   echo "[OK] CM agent wrapper: ${version}"
 }
+validate_native_psycopg2() {
+  local python="$1" minimum="$2" output extension linked
+  if ! output="$(PYTHONNOUSERSITE=1 "${python}" - "${minimum}" 2>&1 <<'PY'
+import re
+import sys
+import psycopg2
+import psycopg2._psycopg as extension
+
+version = psycopg2.__version__.split()[0]
+if not re.fullmatch(r'\d+\.\d+\.\d+', version):
+    raise SystemExit('Unrecognized psycopg2 version: ' + version)
+if tuple(map(int, version.split('.'))) < tuple(map(int, sys.argv[1].split('.'))):
+    raise SystemExit('psycopg2 ' + version + ' is below ' + sys.argv[1])
+print(version)
+print(extension.__file__)
+PY
+  )"; then
+    printf '%s\n' "[ERROR] ${python}: ${output}"; return 1
+  fi
+  extension="${output##*$'\n'}"
+  if ! linked="$(ldd "${extension}" 2>&1)"; then
+    printf '%s\n' "[ERROR] Cannot inspect ${extension}: ${linked}"; return 1
+  fi
+  [[ "${linked}" == *libpq.so* && "${linked}" != *psycopg2_binary.libs* &&
+     "${linked}" != *psycopg2.libs* && "${linked}" != *'not found'* ]] || {
+    echo "[ERROR] ${python}: psycopg2 is not linked to usable system libpq"; return 1
+  }
+  echo "[OK] ${python}: native psycopg2 ${output%%$'\n'*}"
+}
+ensure_native_psycopg2() {
+  local python="$1" output
+  if output="$(validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}" 2>&1)"; then
+    printf '%s\n' "${output}"; return 0
+  fi
+  echo "[INFO] Building psycopg2 ${HUE_PSYCOPG2_VERSION} for ${python} against host libpq"
+  local packages=() installer=("${python}" -m pip)
+  read -r -a packages <<< "${HUE_PSYCOPG2_BUILD_PACKAGES}"
+  dnf install -y "${packages[@]}" || return 1
+  if ! "${python}" -m pip --version >/dev/null 2>&1; then
+    installer=("${HUE_PSYCOPG2_PYTHON_BIN}" -m pip --python "${python}")
+  fi
+  (
+    # log_init restricts logs to root. Native Python modules also need to be
+    # readable by the service accounts that run the Inspector and Hue.
+    umask 022
+    PATH="${PG_BIN_DIR}:${PATH}" PG_CONFIG="${PG_BIN_DIR}/pg_config" PYTHONNOUSERSITE=1 \
+      "${installer[@]}" install --ignore-installed --no-cache-dir --no-deps \
+      --no-binary=psycopg2 "psycopg2==${HUE_PSYCOPG2_VERSION}"
+  ) || return 1
+  validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}"
+}
 install_hue_fips_psycopg2() {
   [[ "${INSTALL_HUE_FIPS_PSYCOPG2}" == true ]] || return 0
-  local packages=()
-  read -r -a packages <<< "${HUE_PSYCOPG2_BUILD_PACKAGES}"
-  dnf install -y "${packages[@]}"
-  export PATH="${PG_BIN_DIR}:${PATH}" PG_CONFIG="${PG_BIN_DIR}/pg_config"
-  if "${HUE_PSYCOPG2_PYTHON_BIN}" -c 'import psycopg2; assert psycopg2.__version__.split()[0] == "'"${HUE_PSYCOPG2_VERSION}"'"' 2>/dev/null; then
-    echo '[INFO] psycopg2 is already installed; validating its native libraries.'
-    validate_hue_fips_psycopg2
-    return
+  ensure_native_psycopg2 "${HUE_PSYCOPG2_PYTHON_BIN}" || return 1
+  if [[ -x "${CM_AGENT_PYTHON_WRAPPER}" && ! "${CM_AGENT_PYTHON_WRAPPER}" -ef "${HUE_PSYCOPG2_PYTHON_BIN}" ]]; then
+    ensure_native_psycopg2 "${CM_AGENT_PYTHON_WRAPPER}" || return 1
   fi
-  "${HUE_PSYCOPG2_PYTHON_BIN}" -m pip uninstall -y psycopg2 psycopg2-binary || true
-  "${HUE_PSYCOPG2_PYTHON_BIN}" -m pip install --upgrade "${HUE_PIP_VERSION_SPEC}" setuptools wheel
-  "${HUE_PSYCOPG2_PYTHON_BIN}" -m pip install --no-binary=:all: "psycopg2==${HUE_PSYCOPG2_VERSION}"
-  validate_hue_fips_psycopg2
 }
 validate_hue_fips_psycopg2() {
   [[ "${INSTALL_HUE_FIPS_PSYCOPG2}" == true ]] || return 0
-  local out
-  out="$("${HUE_PSYCOPG2_PYTHON_BIN}" -c 'import psycopg2; print(psycopg2.__version__)' 2>&1)" || {
-    echo "[ERROR] psycopg2 import failed: ${out}"; return 1;
-  }
-  [[ "${out}" == "${HUE_PSYCOPG2_VERSION}"* ]] || { echo "[ERROR] Wrong psycopg2 version: ${out}"; return 1; }
-  local extension linked
-  extension="$("${HUE_PSYCOPG2_PYTHON_BIN}" -c 'import psycopg2._psycopg as p; print(p.__file__)')"
-  linked="$(ldd "${extension}")"
-  [[ "${linked}" != *psycopg2_binary.libs* && "${linked}" != *psycopg2.libs* && "${linked}" != *'not found'* ]] || {
-    echo '[ERROR] psycopg2 uses private/broken native libraries; rebuild from source against the OS libpq/OpenSSL.'; return 1;
-  }
+  validate_native_psycopg2 "${HUE_PSYCOPG2_PYTHON_BIN}" "${HUE_PSYCOPG2_VERSION}" || return 1
   if [[ -x "${CM_AGENT_PYTHON_WRAPPER}" ]]; then
-    "${CM_AGENT_PYTHON_WRAPPER}" -c 'import psycopg2; print("[OK] Agent-wrapper psycopg2:", psycopg2.__version__)'
+    validate_native_psycopg2 "${CM_AGENT_PYTHON_WRAPPER}" "${HUE_PSYCOPG2_VERSION}"
+  fi
+}
+install_host_inspector_python() {
+  local system_python="${BOOTSTRAP_PYTHON_BIN}" unversioned python
+  unversioned="$(dirname "${system_python}")/python"
+  local packages=(python3 python-unversioned-command)
+  if [[ "${INSTALL_HUE_FIPS_PSYCOPG2}" == true ]]; then
+    packages+=(python3-psycopg2 "python${CM_AGENT_PYTHON_MAJOR}-psycopg2")
+  fi
+  if ! rpm -q "${packages[@]}" >/dev/null 2>&1; then
+    dnf install -y "${packages[@]}" || return 1
+  fi
+  for python in "${system_python}" "${unversioned}"; do
+    "${python}" -c 'import sys; assert sys.version_info[:2] == (3, 9), sys.version; print("[OK] RHEL system Python", sys.version.split()[0], sys.executable)' || return 1
+  done
+  if [[ "${INSTALL_HUE_FIPS_PSYCOPG2}" == true ]]; then
+    if ! validate_native_psycopg2 "${system_python}" "${HUE_PSYCOPG2_VERSION}" >/dev/null 2>&1; then
+      dnf install -y python3-devel python3-pip || return 1
+    fi
+    ensure_native_psycopg2 "${system_python}" || return 1
+    install_hue_fips_psycopg2 || return 1
   fi
 }
 prepare_postgres_jdbc() {
@@ -492,14 +545,21 @@ EOF
 }
 configure_agent_fips_environment() {
   mkdir -p "${CM_AGENT_SYSTEMD_FIPS_DIR}" "${CM_SUPERVISORD_SYSTEMD_FIPS_DIR}"
-  local file
+  local file agent_path
+  agent_path="${JAVA_HOME_TARGET}/bin:$(systemd-path search-binaries-default)"
   for file in "${CM_AGENT_SYSTEMD_FIPS_FILE}" "${CM_SUPERVISORD_SYSTEMD_FIPS_FILE}"; do
   cat > "${file}" <<EOF
 [Service]
 Environment="JAVA_HOME=${JAVA_HOME_TARGET}"
+Environment="PATH=${agent_path}"
 Environment="JDK_JAVA_OPTIONS=$(fips_java_options)"
 EOF
   done
+}
+register_cm_host_java_home() {
+  if ! "${SYSTEM_PYTHON_BIN}" "${SCRIPT_DIR}/lib/configure_host_java.py" "${1:-${MANAGER_HOST}}" "$(hostname -f)"; then
+    echo "[WARN] Set Java Home Directory to ${JAVA_HOME_TARGET} for this host in CM Hosts > All Hosts > Configuration."
+  fi
 }
 cm_local_url() { printf '%s://%s:%s' "${CM_RUNTIME_PROTOCOL}" "${LOCALHOST_NAME}" "${CM_RUNTIME_PORT}"; }
 wait_for_cm() {
@@ -556,4 +616,3 @@ validate_install_inputs() {
   # Java is installed by step 04. Preflight must work on a clean host without
   # JDK homes, JDK archives or archive checksums; validate those only in step 04.
 }
-

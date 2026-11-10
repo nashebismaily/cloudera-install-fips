@@ -51,6 +51,7 @@ for service_name in "${CM_SERVER_SERVICE}" "${CM_SUPERVISORD_SERVICE}" "${CM_AGE
   fi
 done
 
+register_cm_host_java_home
 PRIVATE_IP="$(hostname -I | awk '{print $1}')"
 DISPLAY_HOST="${CM_EXTERNAL_ACCESS_HOST:-${PRIVATE_IP}}"
 echo "[OK] CM local services are healthy."
