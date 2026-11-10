@@ -265,10 +265,14 @@ validate_cm_agent_python_wrapper() {
   echo "[OK] CM agent wrapper: ${version}"
 }
 validate_native_psycopg2() {
-  local python="$1" minimum="$2" output extension linked
-  if ! output="$(PYTHONNOUSERSITE=1 "${python}" - "${minimum}" 2>&1 <<'PY'
+  local python="$1" minimum="$2" stage="${3:-}" output extension linked
+  if ! output="$(PYTHONNOUSERSITE=1 "${python}" - "${minimum}" "${stage}" 2>&1 <<'PY'
+from pathlib import Path
 import re
 import sys
+
+if sys.argv[2]:
+    sys.path.insert(0, sys.argv[2])
 import psycopg2
 import psycopg2._psycopg as extension
 
@@ -276,7 +280,9 @@ version = psycopg2.__version__.split()[0]
 if not re.fullmatch(r'\d+\.\d+\.\d+', version):
     raise SystemExit('Unrecognized psycopg2 version: ' + version)
 if tuple(map(int, version.split('.'))) < tuple(map(int, sys.argv[1].split('.'))):
-    raise SystemExit('psycopg2 ' + version + ' is below ' + sys.argv[1])
+    raise SystemExit(f'psycopg2 {version} from {psycopg2.__file__} is below {sys.argv[1]}')
+if sys.argv[2] and not Path(extension.__file__).resolve().is_relative_to(Path(sys.argv[2]).resolve()):
+    raise SystemExit('The staged psycopg2 extension was not imported')
 print(version)
 print(extension.__file__)
 PY
@@ -291,13 +297,37 @@ PY
      "${linked}" != *psycopg2.libs* && "${linked}" != *'not found'* ]] || {
     echo "[ERROR] ${python}: psycopg2 is not linked to usable system libpq"; return 1
   }
-  echo "[OK] ${python}: native psycopg2 ${output%%$'\n'*}"
+  echo "[OK] ${python}: native psycopg2 ${output%%$'\n'*} (${extension})"
 }
-ensure_native_psycopg2() {
+ensure_native_psycopg2() (
   local python="$1" output
   if output="$(validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}" 2>&1)"; then
     printf '%s\n' "${output}"; return 0
   fi
+
+  # Select a site directory processed by this interpreter, including a CM wrapper.
+  local site_dir path_file stage install_lock published=false
+  site_dir="$(PYTHONNOUSERSITE=1 "${python}" - <<'PY'
+from pathlib import Path
+import site
+import sys
+
+active = {Path(path).resolve() for path in sys.path if path}
+for directory in reversed(site.getsitepackages()):
+    path = Path(directory).resolve()
+    if not sys.flags.no_site and path in active and path.is_dir():
+        print(path)
+        break
+else:
+    raise SystemExit('No active system site-packages directory for ' + sys.executable)
+PY
+  )" || return 1
+  exec {install_lock}>"${site_dir}/.cloudera-native-psycopg2.lock" || return 1
+  flock "${install_lock}" || return 1
+  if output="$(validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}" 2>&1)"; then
+    printf '%s\n' "${output}"; return 0
+  fi
+
   echo "[INFO] Building psycopg2 ${HUE_PSYCOPG2_VERSION} for ${python} against host libpq"
   local packages=() installer=("${python}" -m pip)
   read -r -a packages <<< "${HUE_PSYCOPG2_BUILD_PACKAGES}"
@@ -305,16 +335,38 @@ ensure_native_psycopg2() {
   if ! "${python}" -m pip --version >/dev/null 2>&1; then
     installer=("${HUE_PSYCOPG2_PYTHON_BIN}" -m pip --python "${python}")
   fi
-  (
-    # log_init restricts logs to root. Native Python modules also need to be
-    # readable by the service accounts that run the Inspector and Hue.
-    umask 022
-    PATH="${PG_BIN_DIR}:${PATH}" PG_CONFIG="${PG_BIN_DIR}/pg_config" PYTHONNOUSERSITE=1 \
-      "${installer[@]}" install --ignore-installed --no-cache-dir --no-deps \
-      --no-binary=psycopg2 "psycopg2==${HUE_PSYCOPG2_VERSION}"
-  ) || return 1
-  validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}"
-}
+  # Build into a separate directory for this interpreter. A system RPM can
+  # otherwise win the import even after pip installs the requested version.
+  umask 022
+  stage="$(mktemp -d "${site_dir}/.cloudera-native-psycopg2.XXXXXX")" || return 1
+  trap 'if [[ "${published}" == false ]]; then rm -rf -- "${stage}"; fi' EXIT
+  PATH="${PG_BIN_DIR}:${PATH}" PG_CONFIG="${PG_BIN_DIR}/pg_config" PYTHONNOUSERSITE=1 \
+    "${installer[@]}" install --target "${stage}" --ignore-installed --no-cache-dir --no-deps \
+    --no-binary=psycopg2 "psycopg2==${HUE_PSYCOPG2_VERSION}" || return 1
+  chmod 0755 "${stage}" || return 1
+  validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}" "${stage}" || return 1
+
+  # Prepend only this driver, then verify a fresh process uses the new path.
+  path_file="${site_dir}/zz-cloudera-native-psycopg2.pth"
+  "${python}" -c 'import sys; print("import sys; sys.path.insert(0, " + ascii(sys.argv[1]) + ")")' \
+    "${stage}" >"${stage}/activate.pth" || return 1
+  if [[ -f "${path_file}" ]]; then
+    cp -p -- "${path_file}" "${stage}/previous.pth" || return 1
+  fi
+  published=true
+  if ! mv -Tf -- "${stage}/activate.pth" "${path_file}"; then
+    published=false; return 1
+  fi
+  if ! validate_native_psycopg2 "${python}" "${HUE_PSYCOPG2_VERSION}"; then
+    if [[ -f "${stage}/previous.pth" ]]; then
+      mv -Tf -- "${stage}/previous.pth" "${path_file}" || return 1
+    else
+      rm -f -- "${path_file}" || return 1
+    fi
+    published=false; return 1
+  fi
+  rm -f -- "${stage}/previous.pth"
+)
 install_hue_fips_psycopg2() {
   [[ "${INSTALL_HUE_FIPS_PSYCOPG2}" == true ]] || return 0
   ensure_native_psycopg2 "${HUE_PSYCOPG2_PYTHON_BIN}" || return 1
