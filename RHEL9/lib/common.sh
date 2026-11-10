@@ -564,6 +564,31 @@ JAVA
   done
   rm -rf -- "${tmpdir}"
 }
+patch_cm_agent_java_version_probe() {
+  local probe="${CLOUDERA_INSTALL_ROOT}/cm-agent/service/mgmt/java_version.sh"
+  local original='^([[:blank:]]*)(\$JAVA_HOME/bin/java|"\$JAVA_HOME/bin/java")[[:blank:]]+-version[[:blank:]]+2>&1[[:blank:]]*$'
+  local patched='^[[:blank:]]*env -u JDK_JAVA_OPTIONS "\$JAVA_HOME/bin/java" -version 2>&1[[:blank:]]*$'
+  if [[ ! -f "${probe}" ]]; then
+    echo "[WARN] CM agent Java version probe is missing: ${probe}"
+    return 0
+  fi
+  if grep -Eq "${original}" "${probe}"; then
+    # The launcher banner would precede the version line in CM's probe output.
+    timestamped_backup "${probe}" || return 1
+    sed -Ei "s@${original}@"'\1env -u JDK_JAVA_OPTIONS "$JAVA_HOME/bin/java" -version 2>\&1@' "${probe}" || return 1
+  elif ! grep -Eq "${patched}" "${probe}"; then
+    echo "[WARN] CM agent Java version probe differs from the expected layout: ${probe}"
+    return 0
+  fi
+
+  # Retire the earlier agent-wide workaround once the probe itself is patched.
+  local old_override="${CM_AGENT_SYSTEMD_FIPS_DIR}/99-java-discovery.conf"
+  if cmp -s "${old_override}" <(printf '[Service]\nUnsetEnvironment=JDK_JAVA_OPTIONS\n'); then
+    timestamped_backup "${old_override}" || return 1
+    rm -- "${old_override}" || return 1
+  fi
+  echo "[OK] CM Java version probe runs without the JDK_JAVA_OPTIONS banner."
+}
 configure_cm_server_fips_opts() {
   local ccj="${JAVA_FIPS_DIR}/${FIPS_CCJ_JAR}" bctls="${JAVA_FIPS_DIR}/${FIPS_BCTLS_JAR}"
   mkdir -p "$(dirname "${CM_SERVER_DEFAULTS_FILE}")" "${CM_AGENT_SYSTEMD_FIPS_DIR}"

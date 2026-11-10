@@ -7,6 +7,7 @@ validate_platform
 ensure_java_default
 validate_cm_java
 configure_java_fips_safelogic
+patch_cm_agent_java_version_probe
 configure_cm_server_fips_opts
 install_required_agent_python
 validate_cm_agent_python_wrapper

@@ -29,6 +29,7 @@ if [[ "${RESET_CM_AGENT_IDENTITY}" == "true" ]]; then
   done
 fi
 
+patch_cm_agent_java_version_probe
 configure_agent_fips_environment
 echo "==== Starting Cloudera Manager agent services ===="
 systemctl daemon-reload
