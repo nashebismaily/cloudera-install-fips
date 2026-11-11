@@ -11,6 +11,79 @@ This profile uses RHEL 9.8 x86_64 with OS FIPS enabled and SafeLogic CCJ 4 for J
 
 The public CFM guide lists RHEL 9.6 for the documented 4.12 SP1 FIPS 140-3 configuration. This directory targets the RHEL 9.8 lab. [Cloudera CFM FIPS guide](https://docs.cloudera.com/cfm/4.12.0/cfm-security/topics/cfm-deploy-on-fips-clusters.html)
 
+## Quick start
+
+Use a root shell on each RHEL 9.8 x86_64 host. Enable OS FIPS and complete the reboot before starting these steps.
+
+1. **Stage the SafeLogic archive on the manager and every worker.** Copy the supplied tar file into `/root/` using this exact filename.
+
+   ```text
+   /root/Cloudera-Base-on-premise-7.3.2-SP1-Safelogic-FIPS-Modules-07282026.tar.gz
+   ```
+
+2. **Clone the repository on every host and enter `RHEL9/`.**
+
+   ```bash
+   dnf install -y git
+   cd /root
+   git clone https://github.com/nashebismaily/cloudera-install-fips.git
+   cd /root/cloudera-install-fips/RHEL9
+   ```
+
+3. **Edit the site settings in `EXPORTS` on each host.** Normalize the line endings, then edit the existing assignments near the top of the file, before `DB_HOST` and the derived URLs.
+
+   ```bash
+   sed -i 's/\r$//' EXPORTS
+   vi EXPORTS
+   ```
+
+   ```bash
+   export CLOUDERA_REPO_USER='your_archive_username'
+   export CLOUDERA_REPO_PASS='your_archive_password'
+   export MANAGER_HOST='cm.example.internal'
+   export AGENT_HOST="$(hostname -f)"
+   ```
+
+   Set `MANAGER_HOST` to the manager's actual fully qualified hostname on every host. `AGENT_HOST` identifies the machine on which the file is sourced. Confirm that `ALLOWED_CIDR` covers the cluster network. Keep the database passwords, `NIFI_SENSITIVE_PROPS_KEY`, and `JAVA_PUBLIC_TRUSTSTORE_PASSWORD` consistent across the hosts that use them. Save and load the configuration.
+
+   ```bash
+   chmod 600 EXPORTS
+   source ./EXPORTS
+   ```
+
+4. **Run the installer for each host's role.** Run the manager installer on the manager first.
+
+   ```bash
+   cd /root/cloudera-install-fips/RHEL9
+   sudo -E bash RUN_MANAGER
+   ```
+
+   Then run the agent installer on each worker.
+
+   ```bash
+   cd /root/cloudera-install-fips/RHEL9
+   sudo -E bash RUN_AGENT
+   ```
+
+5. **Add both parcel repositories in CM.** Open **Parcels → Configuration → Remote Parcel Repository URLs** and add these URLs. Use your entitled Cloudera archive credentials for downloads.
+
+   | Parcel repository | URL |
+   |---|---|
+   | CFM 4.12.0.10001 for RHEL 9 | [https://archive.cloudera.com/p/cfm4/4.12.0.10001/redhat9/yum/tars/parcel/](https://archive.cloudera.com/p/cfm4/4.12.0.10001/redhat9/yum/tars/parcel/) |
+   | CDP Runtime 7.3.2.10000 | [https://archive.cloudera.com/p/cdh7/7.3.2.10000/parcels/](https://archive.cloudera.com/p/cdh7/7.3.2.10000/parcels/) |
+
+   Download, distribute, and activate the matching EL9 parcels on the cluster hosts.
+
+6. **After both parcels are activated, run step 14 on every cluster node receiving both parcels.** Run this before starting ZooKeeper, NiFi, or Registry.
+
+   ```bash
+   cd /root/cloudera-install-fips/RHEL9
+   source ./EXPORTS
+   sudo -E bash 14_install_cfm_fips_jars.sh all
+   ```
+
+After step 14, add and start ZooKeeper in CM. Continue with step 16 and the NiFi configuration below, then configure Registry. Both CFM services use `/opt/java/jdk-21`. [NiFi configuration](#configure-nifi-before-first-start) · [Registry configuration](#add-and-configure-nifi-registry)
+
 ## Install the manager and agents
 
 1. Enable OS FIPS and reboot each host before running the installer. Edit `EXPORTS` for each host and stage the approved SafeLogic bundle with its SHA-256 sidecars. [Installation guide](INSTALL.md)
